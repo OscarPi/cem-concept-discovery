@@ -55,7 +55,7 @@ def run_experiment(
     pre_concept_model,
     concept_model,
     random_state,
-    mark_unknown_as_off=True,
+    chi=True,
     max_concepts_to_discover=10,
     max_epochs=300):
 
@@ -73,7 +73,7 @@ def run_experiment(
         concept_names=concept_names,
         max_concepts_to_discover=max_concepts_to_discover,
         random_state=random_state,
-        mark_unknown_as_off=mark_unknown_as_off,
+        chi=chi,
         max_epochs=max_epochs)
 
     trainer = lightning.Trainer()
@@ -390,7 +390,7 @@ def run_awa(run_dir, random_state, resume):
         pre_concept_model=lambda: resnet34(pretrained=True),
         concept_model=lambda: torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, 5)),
         random_state=random_state,
-        mark_unknown_as_off=False,
+        chi=False,
         max_concepts_to_discover=10,
         max_epochs=150
     )

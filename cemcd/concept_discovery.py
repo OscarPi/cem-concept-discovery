@@ -35,7 +35,7 @@ def calculate_embeddings(model, dl):
 
     return c_pred, c_embs, y_pred
 
-def discover_concept(c_embs, c_pred, concept_idx, concept_on, visualise=True, random_state=42, mark_unknown_as_off=True):
+def discover_concept(c_embs, c_pred, concept_idx, concept_on, visualise=True, random_state=42, chi=True):
     sample_filter = c_pred[:, concept_idx] >= 0.5
 
     if not concept_on:
@@ -63,7 +63,7 @@ def discover_concept(c_embs, c_pred, concept_idx, concept_on, visualise=True, ra
         off_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][-not_in_cluster_size:]
         labels[on_indices] = 1
         labels[off_indices] = 0
-        if mark_unknown_as_off:
+        if chi:
             labels[np.logical_not(sample_filter)] = 0
         
         if visualise:
@@ -158,7 +158,7 @@ def discover_multiple_concepts(
     concept_names,
     max_concepts_to_discover=10,
     random_state=42,
-    mark_unknown_as_off=True,
+    chi=True,
     max_epochs=300):
     Path(save_path).mkdir(parents=True, exist_ok=True)
     seed_everything(random_state, workers=True)
@@ -267,7 +267,7 @@ def discover_multiple_concepts(
             concept_on,
             visualise=False,
             random_state=random_state,
-            mark_unknown_as_off=mark_unknown_as_off
+            chi=chi
         )
 
         if new_concept_labels is None:
