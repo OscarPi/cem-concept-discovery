@@ -118,8 +118,7 @@ def run_experiment(
         test_dl=test_dl_getter(None),
         black_box=False,
         save_path=os.path.join(run_dir, "cbm_baseline.pth"),
-        max_epochs=max_epochs
-    )
+        max_epochs=max_epochs)
     cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
     cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
 

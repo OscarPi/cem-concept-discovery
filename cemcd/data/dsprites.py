@@ -34,7 +34,6 @@ class DSpritesDatasets:
         generator = np.random.default_rng(42)
         self.permutation = generator.permutation(l)
 
-        
         self.val_start = int(0.6*l)
         self.test_start = int(0.75*l)
         self.length = l
@@ -44,7 +43,6 @@ class DSpritesDatasets:
         quadrant = loc[:, 0] * 2 + loc[:, 1]
         shape = latents[:, (False, True, False, False, False, False)].squeeze()
         scale = latents[:, (False, False, True, False, False, False)].squeeze()
-
 
         self.quadrant_train = torch.tensor(quadrant[:self.val_start])
         self.shape_train = torch.tensor(shape[:self.val_start])

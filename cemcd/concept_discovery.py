@@ -51,16 +51,16 @@ def discover_concept(c_embs, c_pred, concept_idx, concept_on, visualise=True, ra
 
         embeddings_size = clusters.labels_.shape[0]
         buffer_size = int(embeddings_size*0.7)
-        not_in_cluster_size = embeddings_size-(largest_cluster_size+buffer_size)
-        if not_in_cluster_size < embeddings_size*0.2:
-            not_in_cluster_size = min(int(embeddings_size*0.2), embeddings_size-largest_cluster_size)
+        marked_as_off_size = embeddings_size-(largest_cluster_size+buffer_size)
+        if marked_as_off_size < embeddings_size*0.2:
+            marked_as_off_size = min(int(embeddings_size*0.2), embeddings_size-largest_cluster_size)
         largest_cluster_centre = clusters.cluster_centers_[largest_cluster_label]
 
         sorted_by_distance = np.argsort(np.linalg.norm(embeddings - largest_cluster_centre, axis=1))
 
         labels = np.repeat(np.nan, c_embs.shape[0])
         on_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][:largest_cluster_size]
-        off_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][-not_in_cluster_size:]
+        off_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][-marked_as_off_size:]
         labels[on_indices] = 1
         labels[off_indices] = 0
         if chi:
@@ -207,7 +207,7 @@ def discover_multiple_concepts(
         )
         model.load_state_dict(torch.load(os.path.join(save_path, f"{state['n_discovered_concepts']}_concepts_discovered.pth")))
 
-        for i in range(state["n_discovered_concepts"]+1, state["n_discovered_concepts"]+20):
+        for i in range(state["n_discovered_concepts"]+1, state["n_discovered_concepts"]+max_concepts_to_discover):
             if os.path.exists(os.path.join(save_path, f"{i}_concepts_discovered.pth")):
                 Path(os.path.join(save_path, f"{i}_concepts_discovered.pth")).unlink()
     else:

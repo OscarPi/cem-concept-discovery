@@ -1,7 +1,6 @@
 """
-General utils for training, evaluation and data loading
-
-Adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
+As with other files in the repository, based on code from https://github.com/mateoespinosa/cem
+Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
 """
 import os
 import torch
@@ -667,10 +666,6 @@ CONCEPT_SEMANTICS = [
 ]
 
 SELECTED_CONCEPT_SEMANTICS = list(np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS])
-
-##########################################################
-## ORIGINAL CLASSES FROM CBM PAPER
-##########################################################
 
 class CUBDataset(Dataset):
     """

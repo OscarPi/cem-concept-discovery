@@ -1,5 +1,6 @@
 """
-Adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
+As with other files in the repository, based on code from https://github.com/mateoespinosa/cem
+Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
 """
 import os
 import torch
@@ -119,11 +120,6 @@ SELECTED_CONCEPT_SEMANTICS = [
     "bipedal",
     "quadrapedal"
 ]
-
-
-##########################################################
-## CLASSES ADAPTED FROM CBM PAPER
-##########################################################
 
 class AwADataset(Dataset):
     """

@@ -9,7 +9,7 @@ import numpy as np
 def calculate_task_class_weights(n_tasks, train_dl):
     attribute_count = np.zeros((max(n_tasks, 2),))
     samples_seen = 0
-    for i, data in enumerate(train_dl):
+    for _, data in enumerate(train_dl):
         (_, y, _) = data
         if n_tasks > 1:
             y = torch.nn.functional.one_hot(
@@ -36,7 +36,7 @@ def calculate_task_class_weights(n_tasks, train_dl):
 def calculate_concept_loss_weights(n_concepts, train_dl):
     attribute_count = np.zeros((n_concepts,))
     samples_seen = 0
-    for i, data in enumerate(train_dl):
+    for _, data in enumerate(train_dl):
         (_, _, c) = data
         c = c.cpu().detach().numpy()
         c = np.nan_to_num(c)

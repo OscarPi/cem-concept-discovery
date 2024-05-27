@@ -17,10 +17,10 @@ class BaseModel(lightning.LightningModule):
         else:
             self.loss_task = torch.nn.BCEWithLogitsLoss(weight=task_class_weights)
 
-    def forward(self, x, c_true=None, interventions=None, train=False):
+    def forward(self, x, c_true=None, train=False):
         raise NotImplementedError()
 
-    def run_step(self, batch, interventions=None, train=False):
+    def run_step(self, batch, train=False):
         x, y, c = batch
 
         result = self.forward(
