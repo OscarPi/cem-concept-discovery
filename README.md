@@ -12,13 +12,13 @@ Much of the code in this repository is based on the [implementation](https://git
 Make sure you have Python 3.10 and pip >= 24.0 installed, then run:
 
 `
-    pip install .
+    pip install --editable .
 `
 
 ## Usage
 ---
 `
-python experiments/run_experiment.py [mnist_add|dsprites|cub|awa]
+    python experiments/run_experiment.py [mnist_add|dsprites|cub|awa]
 `
 
 Before running an experiment you need to download the dataset. MNIST will be downloaded automatically. dSprites can be downloaded from [here](https://github.com/google-deepmind/dsprites-dataset). Animals with Attributes 2 can be downloaded [here](https://cvml.ista.ac.at/AwA2/). Then run `generate_awa_splits.py` to produce train, validation and test splits. To download CUB, follow the instructions [here](https://github.com/yewsiang/ConceptBottleneck/tree/master/CUB).
