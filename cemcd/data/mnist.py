@@ -3,7 +3,7 @@ import sklearn.model_selection
 import torch
 import torchvision
 
-DATASET_DIR = "datasets"
+DATASET_DIR = "/datasets"
 
 x_train = []
 y_train = []

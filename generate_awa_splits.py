@@ -111,7 +111,7 @@ PREDICATE_MATRIX = [
 
 SELECTED_CONCEPT_IDXS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 43, 44, 45]
 
-DATASET_DIR = os.environ.get("DATASET_DIR", 'datasets/Animals_with_Attributes2/')
+DATASET_DIR = os.environ.get("DATASET_DIR", '/datasets/Animals_with_Attributes2/')
 
 IMAGES_DIR = os.path.join(DATASET_DIR, "JPEGImages")
 

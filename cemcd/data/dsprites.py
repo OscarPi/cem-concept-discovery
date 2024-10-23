@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-DATASET_PATH = "datasets/dSprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz"
+DATASET_PATH = "/datasets/dSprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz"
 
 class DSpritesDataset(torch.utils.data.Dataset):
     def __init__(self, imgs, imgs_start, imgs_end, permutation, concepts, labels):

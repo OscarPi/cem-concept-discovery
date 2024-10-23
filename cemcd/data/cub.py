@@ -23,7 +23,7 @@ N_CLASSES = 200
 #                in the original CBM paper's repository
 #                found here: https://github.com/yewsiang/ConceptBottleneck
 # CAN BE OVERWRITTEN WITH AN ENV VARIABLE DATASET_DIR
-DATASET_DIR = os.environ.get("DATASET_DIR", 'datasets/CUB/')
+DATASET_DIR = os.environ.get("DATASET_DIR", '/datasets/CUB/')
 
 #########################################################
 ## CONCEPT INFORMATION REGARDING CUB

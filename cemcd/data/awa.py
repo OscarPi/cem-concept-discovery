@@ -20,7 +20,7 @@ N_CLASSES = 50
 #                TO RUN ANY AwA2 EXPERIMENTS!!
 #                The dataset can be downloaded from here: https://cvml.ista.ac.at/AwA2/
 # CAN BE OVERWRITTEN WITH AN ENV VARIABLE DATASET_DIR
-DATASET_DIR = os.environ.get("DATASET_DIR", 'datasets/Animals_with_Attributes2/')
+DATASET_DIR = os.environ.get("DATASET_DIR", '/datasets/Animals_with_Attributes2/')
 
 #########################################################
 ## CONCEPT INFORMATION REGARDING AwA2
