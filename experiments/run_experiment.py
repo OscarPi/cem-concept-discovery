@@ -22,6 +22,7 @@ def parse_arguments():
     parser.add_argument('experiment_name', choices=['mnist_add', 'dsprites', 'cub', 'awa'],
                         help='Name of the experiment: "mnist_add", "dsprites", "cub", or "awa"')
     parser.add_argument('--resume', type=int, help="Resume the given run")
+    parser.add_argument('--reuse-model', action=argparse.BooleanOptionalAction, default=False)
     return parser.parse_args()
 
 def get_results_directory(experiment_name, resume):
@@ -57,7 +58,8 @@ def run_experiment(
     random_state,
     chi=True,
     max_concepts_to_discover=10,
-    max_epochs=300):
+    max_epochs=300,
+    reuse=False):
 
     model, model_0, n_discovered_concepts, discovered_concept_test_ground_truth = cemcd.concept_discovery.discover_multiple_concepts(
         resume=resume,
@@ -74,7 +76,8 @@ def run_experiment(
         max_concepts_to_discover=max_concepts_to_discover,
         random_state=random_state,
         chi=chi,
-        max_epochs=max_epochs)
+        max_epochs=max_epochs,
+        reuse=reuse)
 
     trainer = lightning.Trainer()
 
@@ -157,7 +160,7 @@ def run_experiment(
         f.write(f"Black box task accuracy: {black_box_task_accuracy}\n")
 
 
-def run_mnist(run_dir, random_state, resume):
+def run_mnist(run_dir, random_state, resume, reuse):
     datasets = mnist.MNISTDatasets(2, selected_digits=(0, 1, 2, 3, 4, 5, 6))
 
     concept_bank = np.stack((
@@ -222,10 +225,11 @@ def run_mnist(run_dir, random_state, resume):
         run_dir=run_dir,
         pre_concept_model=lambda: get_pre_concept_model(28, 28, 2),
         concept_model=lambda: get_pre_concept_model(28, 28, 2, 2),
-        random_state=random_state
+        random_state=random_state,
+        reuse=reuse
     )
 
-def run_dsprites(run_dir, random_state, resume):
+def run_dsprites(run_dir, random_state, resume, reuse):
     datasets = dsprites.DSpritesDatasets()
 
     concept_bank = np.stack((
@@ -287,7 +291,8 @@ def run_dsprites(run_dir, random_state, resume):
         run_dir=run_dir,
         pre_concept_model=lambda: get_pre_concept_model(64, 64, 1),
         concept_model=lambda: get_pre_concept_model(64, 64, 1, 3),
-        random_state=random_state
+        random_state=random_state,
+        reuse=reuse
     )
 
 CUB_COMPRESSED_CONCEPT_SEMANTICS = ['has_wing_color::light', 'has_wing_color::dark', 'has_upperparts_color::light', 'has_upperparts_color::dark', 'has_underparts_color::light', 'has_underparts_color::dark', 'has_back_color::light', 'has_back_color::dark', 'has_upper_tail_color::light', 'has_upper_tail_color::dark', 'has_breast_color::light', 'has_breast_color::dark', 'has_throat_color::light', 'has_throat_color::dark', 'has_forehead_color::light', 'has_forehead_color::dark', 'has_under_tail_color::light', 'has_under_tail_color::dark', 'has_nape_color::light', 'has_nape_color::dark', 'has_belly_color::light', 'has_belly_color::dark', 'has_primary_color::light', 'has_primary_color::dark', 'has_leg_color::light', 'has_leg_color::dark', 'has_bill_color::light', 'has_bill_color::dark', 'has_crown_color::light', 'has_crown_color::dark']
@@ -344,7 +349,7 @@ def compress_colour_concepts(concepts):
 
 CUB_SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
 
-def run_cub(run_dir, random_state, resume):
+def run_cub(run_dir, random_state, resume, reuse):
     cub_datasets = cub.CUBDatasets(selected_classes=CUB_SELECTED_CLASSES)
 
     concept_bank = np.array(list(map(lambda d: d["attribute_label"], cub_datasets.train_data)))
@@ -365,10 +370,11 @@ def run_cub(run_dir, random_state, resume):
         pre_concept_model=lambda: resnet34(pretrained=True),
         concept_model=lambda: torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, len(CUB_COMPRESSED_CONCEPT_SEMANTICS))),
         random_state=random_state,
-        max_epochs=150
+        max_epochs=150,
+        reuse=reuse
     )
 
-def run_awa(run_dir, random_state, resume):
+def run_awa(run_dir, random_state, resume, reuse):
     awa_datasets = awa.AwADatasets(selected_classes=[41, 5, 45, 6, 12, 28, 1, 48, 43, 30])
 
     concept_bank = np.array(list(map(lambda d: d["attribute_label"], awa_datasets.train_data)))
@@ -391,7 +397,8 @@ def run_awa(run_dir, random_state, resume):
         random_state=random_state,
         chi=False,
         max_concepts_to_discover=10,
-        max_epochs=150
+        max_epochs=150,
+        reuse=reuse
     )
 
 if __name__ == "__main__":
@@ -411,13 +418,13 @@ if __name__ == "__main__":
             random_state = int(f.read())
 
     if experiment_name == "mnist_add":
-        run_mnist(run_dir, random_state, resume)
+        run_mnist(run_dir, random_state, resume, args.reuse_model)
     elif experiment_name == "dsprites":
-        run_dsprites(run_dir, random_state, resume)
+        run_dsprites(run_dir, random_state, resume, args.reuse_model)
     elif experiment_name == "cub":
-        run_cub(run_dir, random_state, resume)
+        run_cub(run_dir, random_state, resume, args.reuse_model)
     elif experiment_name == "awa":
-        run_awa(run_dir, random_state, resume)
+        run_awa(run_dir, random_state, resume, args.reuse_model)
 
     with open(os.path.join(run_dir, "time.txt"), "w") as f:
         f.write("%s seconds" % (time.time() - start_time))

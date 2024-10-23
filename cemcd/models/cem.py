@@ -1,23 +1,44 @@
 import torch
 from cemcd.models import base
+import copy
 
 class ConceptEmbeddingModel(base.BaseModel):
-    def __init__(self, n_concepts, n_tasks, pre_concept_model, task_class_weights, concept_loss_weights):
+    def __init__(
+        self,
+        n_concepts,
+        n_tasks,
+        pre_concept_model,
+        task_class_weights,
+        concept_loss_weights,
+        pretrained_pre_concept_model=None,
+        pretrained_concept_embedding_generators=None,
+        pretrained_scoring_function=None):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
-        self.pre_concept_model = pre_concept_model()
+
+        if pretrained_pre_concept_model is not None:
+            self.pre_concept_model = copy.deepcopy(pretrained_pre_concept_model)
+        else:
+            self.pre_concept_model = pre_concept_model()
+
         self.embedding_size = 16
         self.concept_loss_weight = 10
 
         latent_representation_size = list(self.pre_concept_model.modules())[-1].out_features
-        self.concept_embedding_generators = torch.nn.ModuleList()
-        for _ in range(self.n_concepts):
+        if pretrained_concept_embedding_generators is not None:
+            self.concept_embedding_generators = copy.deepcopy(pretrained_concept_embedding_generators)
+        else:
+            self.concept_embedding_generators = torch.nn.ModuleList()
+        for _ in range(self.n_concepts - len(self.concept_embedding_generators)):
             self.concept_embedding_generators.append(torch.nn.Sequential(
                 torch.nn.Linear(latent_representation_size, self.embedding_size * 2),
                 torch.nn.LeakyReLU()
             ))
 
-        self.scoring_function = torch.nn.Linear(self.embedding_size * 2, 1)
+        if pretrained_scoring_function is not None:
+            self.scoring_function = copy.deepcopy(pretrained_scoring_function)
+        else:
+            self.scoring_function = torch.nn.Linear(self.embedding_size * 2, 1)
 
         self.label_predictor = torch.nn.Sequential(
             torch.nn.Linear(self.n_concepts * self.embedding_size, 128),

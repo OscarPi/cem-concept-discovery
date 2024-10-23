@@ -159,7 +159,8 @@ def discover_multiple_concepts(
     max_concepts_to_discover=10,
     random_state=42,
     chi=True,
-    max_epochs=300):
+    max_epochs=300,
+    reuse=False):
     Path(save_path).mkdir(parents=True, exist_ok=True)
     seed_everything(random_state, workers=True)
 
@@ -285,6 +286,13 @@ def discover_multiple_concepts(
             axis=1
         )
 
+        pretrained_pre_concept_model = None
+        pretrained_concept_embedding_generators = None
+        pretrained_scoring_function = None
+        if reuse:
+            pretrained_pre_concept_model = model.pre_concept_model
+            pretrained_concept_embedding_generators = model.concept_embedding_generators
+            pretrained_scoring_function = model.scoring_function
         model_next, _ = train_cem(
             n_concepts + state["n_discovered_concepts"],
             n_tasks,
@@ -293,7 +301,10 @@ def discover_multiple_concepts(
             val_dl_getter(np.full((val_dataset_size, state["discovered_concept_labels"].shape[1]), np.nan)),
             test_dl_getter(np.full((test_dataset_size, state["discovered_concept_labels"].shape[1]), np.nan)),
             save_path=os.path.join(save_path, f"{state['n_discovered_concepts']}_concepts_discovered.pth"),
-            max_epochs=max_epochs)
+            max_epochs=max_epochs,
+            pretrained_pre_concept_model=pretrained_pre_concept_model,
+            pretrained_concept_embedding_generators=pretrained_concept_embedding_generators,
+            pretrained_scoring_function=pretrained_scoring_function)
         c_pred_next, c_embs_next, _ = calculate_embeddings(model_next, train_dl_getter(state["discovered_concept_labels"]))
 
         similarities = np.mean(
