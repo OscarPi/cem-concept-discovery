@@ -22,6 +22,7 @@ def parse_arguments():
     parser.add_argument('experiment_name', choices=['mnist_add', 'dsprites', 'cub', 'awa'],
                         help='Name of the experiment: "mnist_add", "dsprites", "cub", or "awa"')
     parser.add_argument('--resume', type=int, help="Resume the given run")
+    parser.add_argument("--max-concepts-to-discover", type=int, help="The maximum number of concepts to discover.", default=10)
     parser.add_argument('--reuse-model', action=argparse.BooleanOptionalAction, default=False)
     return parser.parse_args()
 
@@ -59,7 +60,7 @@ def run_experiment(
     chi=True,
     max_concepts_to_discover=10,
     max_epochs=300,
-    reuse=False):
+    reuse=False,):
 
     model, model_0, n_discovered_concepts, discovered_concept_test_ground_truth = cemcd.concept_discovery.discover_multiple_concepts(
         resume=resume,
@@ -160,7 +161,7 @@ def run_experiment(
         f.write(f"Black box task accuracy: {black_box_task_accuracy}\n")
 
 
-def run_mnist(run_dir, random_state, resume, reuse):
+def run_mnist(run_dir, random_state, resume, reuse, max_concepts_to_discover):
     datasets = mnist.MNISTDatasets(2, selected_digits=(0, 1, 2, 3, 4, 5, 6))
 
     concept_bank = np.stack((
@@ -226,10 +227,11 @@ def run_mnist(run_dir, random_state, resume, reuse):
         pre_concept_model=lambda: get_pre_concept_model(28, 28, 2),
         concept_model=lambda: get_pre_concept_model(28, 28, 2, 2),
         random_state=random_state,
+        max_concepts_to_discover=max_concepts_to_discover,
         reuse=reuse
     )
 
-def run_dsprites(run_dir, random_state, resume, reuse):
+def run_dsprites(run_dir, random_state, resume, reuse, max_concepts_to_discover):
     datasets = dsprites.DSpritesDatasets()
 
     concept_bank = np.stack((
@@ -292,6 +294,7 @@ def run_dsprites(run_dir, random_state, resume, reuse):
         pre_concept_model=lambda: get_pre_concept_model(64, 64, 1),
         concept_model=lambda: get_pre_concept_model(64, 64, 1, 3),
         random_state=random_state,
+        max_concepts_to_discover=max_concepts_to_discover,
         reuse=reuse
     )
 
@@ -349,7 +352,7 @@ def compress_colour_concepts(concepts):
 
 CUB_SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
 
-def run_cub(run_dir, random_state, resume, reuse):
+def run_cub(run_dir, random_state, resume, reuse, max_concepts_to_discover):
     cub_datasets = cub.CUBDatasets(selected_classes=CUB_SELECTED_CLASSES)
 
     concept_bank = np.array(list(map(lambda d: d["attribute_label"], cub_datasets.train_data)))
@@ -369,12 +372,13 @@ def run_cub(run_dir, random_state, resume, reuse):
         run_dir=run_dir,
         pre_concept_model=lambda: resnet34(pretrained=True),
         concept_model=lambda: torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, len(CUB_COMPRESSED_CONCEPT_SEMANTICS))),
-        random_state=random_state,
+        random_state=random_state, 
+        max_concepts_to_discover=max_concepts_to_discover,
         max_epochs=150,
         reuse=reuse
     )
 
-def run_awa(run_dir, random_state, resume, reuse):
+def run_awa(run_dir, random_state, resume, reuse, max_concepts_to_discover):
     awa_datasets = awa.AwADatasets(selected_classes=[41, 5, 45, 6, 12, 28, 1, 48, 43, 30])
 
     concept_bank = np.array(list(map(lambda d: d["attribute_label"], awa_datasets.train_data)))
@@ -396,7 +400,7 @@ def run_awa(run_dir, random_state, resume, reuse):
         concept_model=lambda: torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, 5)),
         random_state=random_state,
         chi=False,
-        max_concepts_to_discover=10,
+        max_concepts_to_discover=max_concepts_to_discover,
         max_epochs=150,
         reuse=reuse
     )
@@ -411,20 +415,22 @@ if __name__ == "__main__":
     if args.resume is None:
         resume = False
         random_state = np.random.randint(0, 1000)
-        with open(os.path.join(run_dir, "random_state.txt"), "w") as f:
-            f.write(str(random_state))
+        with open(os.path.join(run_dir, "stats.txt"), "w") as f:
+            f.write(f"random_state: {str(random_state)}\n")
+            f.write(f"reuse_model: {str(args.reuse_model)}\n")
+            f.write(f"max_concepts_to_discover: {str(args.max_concepts_to_discover)}\n")
     else:
         with open(os.path.join(run_dir, "random_state.txt"), "r") as f:
             random_state = int(f.read())
 
     if experiment_name == "mnist_add":
-        run_mnist(run_dir, random_state, resume, args.reuse_model)
+        run_mnist(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
     elif experiment_name == "dsprites":
-        run_dsprites(run_dir, random_state, resume, args.reuse_model)
+        run_dsprites(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
     elif experiment_name == "cub":
-        run_cub(run_dir, random_state, resume, args.reuse_model)
+        run_cub(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
     elif experiment_name == "awa":
-        run_awa(run_dir, random_state, resume, args.reuse_model)
+        run_awa(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
 
-    with open(os.path.join(run_dir, "time.txt"), "w") as f:
-        f.write("%s seconds" % (time.time() - start_time))
+    with open(os.path.join(run_dir, "stats.txt"), "a") as f:
+        f.write(f"time: {time.time() - start_time}s\n")

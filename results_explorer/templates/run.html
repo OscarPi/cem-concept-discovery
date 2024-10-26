@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="d-flex flex-grow-1">
+    <div class="pt-3 ps-3 pe-3 w-100">
+      <h1 class="h4 text-muted">{{ selected_dataset }} / {{ run }}</h1>
+      <hr />
+      <table class="table table-bordered mt-3">
+        <tbody>
+            {% for key, value in run_details.stats.items() %}
+                <tr>
+                    <td><strong>{{ key }}</strong></td>
+                    <td>{{ value }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
