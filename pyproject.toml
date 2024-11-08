@@ -10,7 +10,7 @@ dependencies = [
     "torchvision>=0.17.1",
     "matplotlib>=3.8.2",
     "Pillow>=10.3.0",
-    "Flask>=3.0.3",
+    "wandb>=0.18.5",
 ]
 
 [tool.setuptools.packages.find]
