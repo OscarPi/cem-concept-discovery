@@ -25,3 +25,4 @@
 /.sudo_as_admin_successful
 /.idea
 **/__pycache__
+/wandb

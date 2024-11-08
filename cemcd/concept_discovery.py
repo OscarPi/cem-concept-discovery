@@ -2,6 +2,7 @@ import numpy as np
 import lightning
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
+from sklearn.cluster import HDBSCAN
 from scipy import stats
 from sklearn.manifold import TSNE
 from sklearn.metrics import silhouette_score
@@ -12,6 +13,7 @@ from lightning.pytorch import seed_everything
 from pathlib import Path
 from cemcd.models.cem import ConceptEmbeddingModel 
 import torch
+import wandb
 
 def calculate_embeddings(model, dl):
     trainer = lightning.Trainer()
@@ -35,7 +37,7 @@ def calculate_embeddings(model, dl):
 
     return c_pred, c_embs, y_pred
 
-def discover_concept(c_embs, c_pred, concept_idx, concept_on, visualise=True, random_state=42, chi=True):
+def discover_concept(c_embs, c_pred, concept_idx, concept_on, random_state=42, chi=True, clustering_algorithm="kmeans"):
     sample_filter = c_pred[:, concept_idx] >= 0.5
 
     if not concept_on:
@@ -44,43 +46,42 @@ def discover_concept(c_embs, c_pred, concept_idx, concept_on, visualise=True, ra
     embeddings = c_embs[:, concept_idx][sample_filter]
 
     for i in range(10):
-        clusters = KMeans(n_clusters=25, n_init=10, random_state=random_state + i*25).fit(embeddings)
+        if clustering_algorithm == "kmeans":
+            clusters = KMeans(n_clusters=25, n_init=10, random_state=random_state + i*25).fit(embeddings)
+        elif clustering_algorithm == "hdbscan":
+            clusters = HDBSCAN().fit(embeddings)
+        else:
+            raise NotImplementedError(f"Unrecognised clustering algorithm: {clustering_algorithm}")
 
         largest_cluster_label = stats.mode(clusters.labels_)[0]
         largest_cluster_size = np.sum(clusters.labels_ == largest_cluster_label)
 
-        embeddings_size = clusters.labels_.shape[0]
-        buffer_size = int(embeddings_size*0.7)
-        marked_as_off_size = embeddings_size-(largest_cluster_size+buffer_size)
-        if marked_as_off_size < embeddings_size*0.2:
-            marked_as_off_size = min(int(embeddings_size*0.2), embeddings_size-largest_cluster_size)
-        largest_cluster_centre = clusters.cluster_centers_[largest_cluster_label]
+        if clustering_algorithm == "kmeans":
+            embeddings_size = clusters.labels_.shape[0]
+            buffer_size = int(embeddings_size*0.7)
+            marked_as_off_size = embeddings_size-(largest_cluster_size+buffer_size)
+            if marked_as_off_size < embeddings_size*0.2:
+                marked_as_off_size = min(int(embeddings_size*0.2), embeddings_size-largest_cluster_size)
+            largest_cluster_centre = clusters.cluster_centers_[largest_cluster_label]
 
-        sorted_by_distance = np.argsort(np.linalg.norm(embeddings - largest_cluster_centre, axis=1))
+            sorted_by_distance = np.argsort(np.linalg.norm(embeddings - largest_cluster_centre, axis=1))
 
-        labels = np.repeat(np.nan, c_embs.shape[0])
-        on_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][:largest_cluster_size]
-        off_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][-marked_as_off_size:]
-        labels[on_indices] = 1
-        labels[off_indices] = 0
+            labels = np.repeat(np.nan, c_embs.shape[0])
+            on_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][:largest_cluster_size]
+            off_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][-marked_as_off_size:]
+            labels[on_indices] = 1
+            labels[off_indices] = 0
+        else:
+            labels = np.zeros(c_embs.shape[0])
+            labels[sample_filter][clusters.labels_ == largest_cluster_label] = 1
         if chi:
             labels[np.logical_not(sample_filter)] = 0
         
-        if visualise:
-            twod = TSNE(
-                n_components=2,
-                perplexity=30,
-            ).fit_transform(c_embs[:, concept_idx])
-
-            no_nan_labels = np.repeat(-1, labels.shape)
-            no_nan_labels[np.logical_not(np.isnan(labels))] = labels[np.logical_not(np.isnan(labels))]
-
-            plt.scatter(twod[:, 0], twod[:, 1], c=no_nan_labels)
-            plt.show()
-
         similarities = np.expand_dims(labels, axis=1) == (c_pred > 0.5)
         if np.all(np.mean(similarities[np.logical_not(np.isnan(labels))], axis=0) < 0.9):
             return labels
+        if clustering_algorithm != "kmeans":
+            break
 
     return None
 
@@ -123,7 +124,7 @@ def _get_accuracies(test_results, n_provided_concepts):
 
     return task_accuracy, provided_concept_accuracy, discovered_concept_accuracy, provided_concept_auc, discovered_concept_auc
 
-def find_best_concept_to_cluster(concepts_to_try, c_pred, c_embs, random_state):
+def find_best_concept_to_cluster(concepts_to_try, c_pred, c_embs, random_state, clustering_algorithm="kmeans"):
     best_concept = None
     best_concept_on = None
     best_score = 0
@@ -135,7 +136,10 @@ def find_best_concept_to_cluster(concepts_to_try, c_pred, c_embs, random_state):
         if np.sum(sample_filter) < 100:
             options_to_remove.append((concept, on))
             continue
-        clusters = KMeans(n_clusters=25, n_init=10, random_state=random_state).fit(c_embs[:, concept][sample_filter])
+        if clustering_algorithm == "kmeans":
+            clusters = KMeans(n_clusters=25, n_init=10, random_state=random_state).fit(c_embs[:, concept][sample_filter])
+        elif clustering_algorithm == "hdbscan":
+            clusters = HDBSCAN().fit(c_embs[:, concept][sample_filter])
         score = silhouette_score(c_embs[:, concept][sample_filter], clusters.labels_)
         if score > best_score:
             best_concept = concept
@@ -160,7 +164,9 @@ def discover_multiple_concepts(
     random_state=42,
     chi=True,
     max_epochs=300,
-    reuse=False):
+    reuse=False,
+    clustering_algorithm="kmeans",
+    wandb_enabled=True):
     Path(save_path).mkdir(parents=True, exist_ok=True)
     seed_everything(random_state, workers=True)
 
@@ -236,6 +242,14 @@ def discover_multiple_concepts(
         state["discovered_concept_accuracies"].append(discovered_concept_accuracy)
         state["provided_concept_aucs"].append(provided_concept_auc)
         state["discovered_concept_aucs"].append(discovered_concept_auc)
+        if wandb_enabled:
+            wandb.log({
+                "task_accuracy": task_accuracy,
+                "provided_concept_accuracy": provided_concept_accuracy,
+                "discovered_concept_accuracy": discovered_concept_accuracy,
+                "provided_concept_auc": provided_concept_auc,
+                "discovered_concept_auc": discovered_concept_auc
+            }, step=state["n_discovered_concepts"])
 
         state["c_pred"], state["c_embs"], _ = calculate_embeddings(model, train_dl_getter(None))
 
@@ -250,7 +264,8 @@ def discover_multiple_concepts(
             state["concepts_left_to_try"],
             state["c_pred"],
             state["c_embs"], 
-            random_state)
+            random_state,
+            clustering_algorithm=clustering_algorithm)
 
         for option in options_to_remove:
             state["concepts_left_to_try"].remove(option)
@@ -266,9 +281,9 @@ def discover_multiple_concepts(
             state["c_pred"],
             concept_idx,
             concept_on,
-            visualise=False,
             random_state=random_state,
-            chi=chi
+            chi=chi,
+            clustering_algorithm=clustering_algorithm
         )
 
         if new_concept_labels is None:
@@ -339,6 +354,20 @@ def discover_multiple_concepts(
                 pickle.dump(state, f)
             continue
 
+        if wandb_enabled:
+            twod = TSNE(
+                n_components=2,
+                perplexity=30,
+            ).fit_transform(state["c_embs"][:, concept_idx])
+
+            no_nan_labels = np.repeat(-1, new_concept_labels.shape)
+            no_nan_labels[np.logical_not(np.isnan(new_concept_labels))] = new_concept_labels[np.logical_not(np.isnan(new_concept_labels))]
+
+            plt.scatter(twod[:, 0], twod[:, 1], c=no_nan_labels)
+            wandb.log({"cluster_visualisation_generated_labels": plt}, step=state["n_discovered_concepts"])
+            plt.scatter(twod[:, 0], twod[:, 1], c=concept_bank[:, most_similar])
+            wandb.log({"cluster_visualisation_interpretation_ground_truth": plt}, step=state["n_discovered_concepts"])
+
         state["c_pred"], state["c_embs"] = c_pred_next, c_embs_next
         model = model_next
         print()
@@ -363,6 +392,15 @@ def discover_multiple_concepts(
         state["provided_concept_aucs"].append(provided_concept_auc)
         state["discovered_concept_aucs"].append(discovered_concept_auc)
 
+        if wandb_enabled:
+            wandb.log({
+                "task_accuracy": task_accuracy,
+                "provided_concept_accuracy": provided_concept_accuracy,
+                "discovered_concept_accuracy": discovered_concept_accuracy,
+                "provided_concept_auc": provided_concept_auc,
+                "discovered_concept_auc": discovered_concept_auc,
+            }, step=state["n_discovered_concepts"])
+
         state["all_concepts_to_try"] = \
             state["all_concepts_to_try"] + \
             ((n_concepts + state["n_discovered_concepts"] - 1, True), (n_concepts + state["n_discovered_concepts"] - 1, False))
@@ -379,6 +417,14 @@ def discover_multiple_concepts(
         f.write(f"Provided concept AUCs: {', '.join([str(x) for x in state['provided_concept_accuracies']])}\n")
         f.write(f"Discovered concept AUCs: {', '.join([str(x) for x in state['discovered_concept_accuracies']])}\n")
         f.write(f"Discovered concept semantics: {', '.join(state['discovered_concept_semantics'])}")
+    if wandb_enabled:
+        semantics_data = list(zip(range(1, state['n_discovered_concepts'] + 1), state['discovered_concept_semantics']))
+        wandb.log({
+            "n_discovered_concepts": state['n_discovered_concepts'],
+            "rejected_because_of_similarity": state['rejected_because_of_similarity'],
+            "did_not_match_concept_bank": state['did_not_match_concept_bank'],
+            "concept_semantics": wandb.Table(data=semantics_data, columns=["Discovered concept", "Meaning"])
+        }, commit=False)
 
     with open(os.path.join(save_path, "discovered_concept_test_ground_truth.pickle"), "wb") as f:
         pickle.dump(state["discovered_concept_test_ground_truth"], f)

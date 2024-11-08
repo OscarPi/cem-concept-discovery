@@ -14,6 +14,7 @@ import torch
 from torchvision.models import resnet34
 from collections import defaultdict
 from pathlib import Path
+import wandb
 
 RESULTS_DIR = os.environ.get("RESULTS_DIR", 'results/')
 
@@ -24,6 +25,8 @@ def parse_arguments():
     parser.add_argument('--resume', type=int, help="Resume the given run")
     parser.add_argument("--max-concepts-to-discover", type=int, help="The maximum number of concepts to discover.", default=10)
     parser.add_argument('--reuse-model', action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument('--clustering-algorithm', choices=['kmeans', 'hdbscan'], default='kmeans')
+    parser.add_argument('--wandb', action=argparse.BooleanOptionalAction, default=True)
     return parser.parse_args()
 
 def get_results_directory(experiment_name, resume):
@@ -60,7 +63,9 @@ def run_experiment(
     chi=True,
     max_concepts_to_discover=10,
     max_epochs=300,
-    reuse=False,):
+    reuse=False,
+    clustering_algorithm="kmeans",
+    wandb_enabled=True):
 
     model, model_0, n_discovered_concepts, discovered_concept_test_ground_truth = cemcd.concept_discovery.discover_multiple_concepts(
         resume=resume,
@@ -78,7 +83,9 @@ def run_experiment(
         random_state=random_state,
         chi=chi,
         max_epochs=max_epochs,
-        reuse=reuse)
+        reuse=reuse,
+        clustering_algorithm=clustering_algorithm,
+        wandb_enabled=wandb_enabled)
 
     trainer = lightning.Trainer()
 
@@ -160,8 +167,22 @@ def run_experiment(
         f.write(f"CBM concept AUC: {cbm_concept_auc}\n")
         f.write(f"Black box task accuracy: {black_box_task_accuracy}\n")
 
+    if wandb_enabled:
+        wandb.log({
+            "concept_intervention_accuracies": wandb.plot.line_series(
+                xs=list(range(len(concept_intervention_accuracies))), 
+                ys=[concept_intervention_accuracies, discovered_concept_intervention_accuracies, cem_intervention_accuracies, cbm_intervention_accuracies],
+                keys=["All concepts intervened", "Discovered concepts intervened", "Regular CEM interventions", "CBM interventions"],
+                title="Concept interventions",
+                xname="Concepts intervened"),
+            "cbm_task_accuracy": cbm_task_accuracy,
+            "cbm_concept_auc": cbm_concept_auc,
+            "black_box_task_accuracy": black_box_task_accuracy
+        }, commit=False)
 
-def run_mnist(run_dir, random_state, resume, reuse, max_concepts_to_discover):
+
+
+def run_mnist(run_dir, random_state, resume, reuse, max_concepts_to_discover, clustering_algorithm, wandb_enabled):
     datasets = mnist.MNISTDatasets(2, selected_digits=(0, 1, 2, 3, 4, 5, 6))
 
     concept_bank = np.stack((
@@ -228,10 +249,12 @@ def run_mnist(run_dir, random_state, resume, reuse, max_concepts_to_discover):
         concept_model=lambda: get_pre_concept_model(28, 28, 2, 2),
         random_state=random_state,
         max_concepts_to_discover=max_concepts_to_discover,
-        reuse=reuse
+        reuse=reuse,
+        clustering_algorithm=clustering_algorithm,
+        wandb_enabled=wandb_enabled
     )
 
-def run_dsprites(run_dir, random_state, resume, reuse, max_concepts_to_discover):
+def run_dsprites(run_dir, random_state, resume, reuse, max_concepts_to_discover, clustering_algorithm, wandb_enabled):
     datasets = dsprites.DSpritesDatasets()
 
     concept_bank = np.stack((
@@ -295,7 +318,9 @@ def run_dsprites(run_dir, random_state, resume, reuse, max_concepts_to_discover)
         concept_model=lambda: get_pre_concept_model(64, 64, 1, 3),
         random_state=random_state,
         max_concepts_to_discover=max_concepts_to_discover,
-        reuse=reuse
+        reuse=reuse,
+        clustering_algorithm=clustering_algorithm,
+        wandb_enabled=wandb_enabled
     )
 
 CUB_COMPRESSED_CONCEPT_SEMANTICS = ['has_wing_color::light', 'has_wing_color::dark', 'has_upperparts_color::light', 'has_upperparts_color::dark', 'has_underparts_color::light', 'has_underparts_color::dark', 'has_back_color::light', 'has_back_color::dark', 'has_upper_tail_color::light', 'has_upper_tail_color::dark', 'has_breast_color::light', 'has_breast_color::dark', 'has_throat_color::light', 'has_throat_color::dark', 'has_forehead_color::light', 'has_forehead_color::dark', 'has_under_tail_color::light', 'has_under_tail_color::dark', 'has_nape_color::light', 'has_nape_color::dark', 'has_belly_color::light', 'has_belly_color::dark', 'has_primary_color::light', 'has_primary_color::dark', 'has_leg_color::light', 'has_leg_color::dark', 'has_bill_color::light', 'has_bill_color::dark', 'has_crown_color::light', 'has_crown_color::dark']
@@ -352,7 +377,7 @@ def compress_colour_concepts(concepts):
 
 CUB_SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
 
-def run_cub(run_dir, random_state, resume, reuse, max_concepts_to_discover):
+def run_cub(run_dir, random_state, resume, reuse, max_concepts_to_discover, clustering_algorithm, wandb_enabled):
     cub_datasets = cub.CUBDatasets(selected_classes=CUB_SELECTED_CLASSES)
 
     concept_bank = np.array(list(map(lambda d: d["attribute_label"], cub_datasets.train_data)))
@@ -375,10 +400,12 @@ def run_cub(run_dir, random_state, resume, reuse, max_concepts_to_discover):
         random_state=random_state, 
         max_concepts_to_discover=max_concepts_to_discover,
         max_epochs=150,
-        reuse=reuse
+        reuse=reuse,
+        clustering_algorithm=clustering_algorithm,
+        wandb_enabled=wandb_enabled
     )
 
-def run_awa(run_dir, random_state, resume, reuse, max_concepts_to_discover):
+def run_awa(run_dir, random_state, resume, reuse, max_concepts_to_discover, clustering_algorithm, wandb_enabled):
     awa_datasets = awa.AwADatasets(selected_classes=[41, 5, 45, 6, 12, 28, 1, 48, 43, 30])
 
     concept_bank = np.array(list(map(lambda d: d["attribute_label"], awa_datasets.train_data)))
@@ -402,7 +429,9 @@ def run_awa(run_dir, random_state, resume, reuse, max_concepts_to_discover):
         chi=False,
         max_concepts_to_discover=max_concepts_to_discover,
         max_epochs=150,
-        reuse=reuse
+        reuse=reuse,
+        clustering_algorithm=clustering_algorithm,
+        wandb_enabled=wandb_enabled
     )
 
 if __name__ == "__main__":
@@ -414,23 +443,70 @@ if __name__ == "__main__":
     resume = True
     if args.resume is None:
         resume = False
-        random_state = np.random.randint(0, 1000)
+        random_state = np.random.randint(0, 10000)
         with open(os.path.join(run_dir, "stats.txt"), "w") as f:
             f.write(f"random_state: {str(random_state)}\n")
             f.write(f"reuse_model: {str(args.reuse_model)}\n")
             f.write(f"max_concepts_to_discover: {str(args.max_concepts_to_discover)}\n")
+            f.write(f"clustering_algorithm: {args.clustering_algorithm}")
+
+        if args.wandb:
+            wandb.init(
+                project="cem-concept-discovery",
+
+                config={
+                    "random_state": random_state,
+                    "reuse_model": args.reuse_model,
+                    "dataset": experiment_name,
+                    "run_dir": run_dir,
+                    "max_concepts_to_discover": args.max_concepts_to_discover,
+                    "clustering_algorithm": args.clustering_algorithm
+                }
+            )
     else:
         with open(os.path.join(run_dir, "random_state.txt"), "r") as f:
             random_state = int(f.read())
 
     if experiment_name == "mnist_add":
-        run_mnist(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
+        run_mnist(
+            run_dir=run_dir,
+            random_state=random_state,
+            resume=resume,
+            reuse=args.reuse_model,
+            max_concepts_to_discover=args.max_concepts_to_discover,
+            clustering_algorithm=args.clustering_algorithm,
+            wandb_enabled=args.wandb)
     elif experiment_name == "dsprites":
-        run_dsprites(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
+        run_dsprites(
+            run_dir=run_dir,
+            random_state=random_state,
+            resume=resume,
+            reuse=args.reuse_model,
+            max_concepts_to_discover=args.max_concepts_to_discover,
+            clustering_algorithm=args.clustering_algorithm,
+            wandb_enabled=args.wandb)
     elif experiment_name == "cub":
-        run_cub(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
+        run_cub(
+            run_dir=run_dir,
+            random_state=random_state,
+            resume=resume,
+            reuse=args.reuse_model,
+            max_concepts_to_discover=args.max_concepts_to_discover,
+            clustering_algorithm=args.clustering_algorithm,
+            wandb_enabled=args.wandb)
     elif experiment_name == "awa":
-        run_awa(run_dir, random_state, resume, args.reuse_model, args.max_concepts_to_discover)
+        run_awa(
+            run_dir=run_dir,
+            random_state=random_state,
+            resume=resume,
+            reuse=args.reuse_model,
+            max_concepts_to_discover=args.max_concepts_to_discover,
+            clustering_algorithm=args.clustering_algorithm,
+            wandb_enabled=args.wandb)
 
+    run_time = time.time() - start_time
     with open(os.path.join(run_dir, "stats.txt"), "a") as f:
-        f.write(f"time: {time.time() - start_time}s\n")
+        f.write(f"time: {run_time}s\n")
+    if args.wandb:
+        wandb.log({"run_time_seconds": run_time})
+        wandb.save(os.path.join(run_dir, "*"))
