@@ -41,9 +41,9 @@ def discover_concept(
         c_pred,
         concept_idx,
         concept_on,
-        chi=True,
-        clustering_algorithm="kmeans",
-        discovered_labels_decay=None):
+        chi,
+        clustering_algorithm,
+        discovered_labels_decay):
     sample_filter = c_pred[:, concept_idx] >= 0.5
 
     if not concept_on:
@@ -77,6 +77,10 @@ def discover_concept(
             off_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][-marked_as_off_size:]
             labels[on_indices] = 1
             labels[off_indices] = 0
+            if discovered_labels_decay == "linear":
+                unsure_indices = np.arange(c_embs.shape[0])[sample_filter][sorted_by_distance][largest_cluster_size:-marked_as_off_size]
+                labels[unsure_indices] = np.linspace(1, 0, unsure_indices.size)
+
         else:
             labels = np.zeros(c_embs.shape[0])
             labels[sample_filter][clusters.labels_ == largest_cluster_label] = 1
@@ -344,9 +348,8 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
                 perplexity=30,
             ).fit_transform(state["c_embs"][:, concept_idx])
 
-            no_nan_labels = np.repeat(-1, new_concept_labels.shape)
+            no_nan_labels = np.repeat(-1., new_concept_labels.shape)
             no_nan_labels[np.logical_not(np.isnan(new_concept_labels))] = new_concept_labels[np.logical_not(np.isnan(new_concept_labels))]
-
             plt.scatter(twod[:, 0], twod[:, 1], c=no_nan_labels)
             wandb.log({"cluster_visualisation_generated_labels": plt}, step=state["n_discovered_concepts"])
             plt.scatter(twod[:, 0], twod[:, 1], c=datasets.concept_bank[:, most_similar])

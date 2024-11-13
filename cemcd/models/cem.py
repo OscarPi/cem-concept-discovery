@@ -4,15 +4,15 @@ import copy
 
 class ConceptEmbeddingModel(base.BaseModel):
     def __init__(
-        self,
-        n_concepts,
-        n_tasks,
-        pre_concept_model,
-        task_class_weights,
-        concept_loss_weights,
-        pretrained_pre_concept_model=None,
-        pretrained_concept_embedding_generators=None,
-        pretrained_scoring_function=None):
+            self,
+            n_concepts,
+            n_tasks,
+            pre_concept_model,
+            task_class_weights,
+            concept_loss_weights,
+            pretrained_pre_concept_model=None,
+            pretrained_concept_embedding_generators=None,
+            pretrained_scoring_function=None):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
 
