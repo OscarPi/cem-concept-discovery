@@ -3,20 +3,18 @@ import sklearn.model_selection
 import torch
 import torchvision
 
-DATASET_DIR = "/datasets"
-
 x_train = []
 y_train = []
 x_val = []
 y_val = []
 x_test = []
 y_test = []
-def load_mnist(root_dir=DATASET_DIR):
+def load_mnist(dataset_dir):
     global x_train, y_train, x_val, y_val, x_test, y_test
     if len(x_train) > 0:
         return
 
-    train_val_ds = torchvision.datasets.MNIST(root_dir, train=True, download=True)
+    train_val_ds = torchvision.datasets.MNIST(dataset_dir, train=True, download=True)
     x_train_val = []
     y_train_val = []
     for x, y in train_val_ds:
@@ -29,7 +27,7 @@ def load_mnist(root_dir=DATASET_DIR):
         x_train_val, y_train_val, test_size=0.2, random_state=42
     )
 
-    test_ds = torchvision.datasets.MNIST(root_dir, train=False, download=True)
+    test_ds = torchvision.datasets.MNIST(dataset_dir, train=False, download=True)
     for x, y in test_ds:
         x_test.append(np.expand_dims(x, axis=(0, 1)))
         y_test.append(np.expand_dims(y, axis=0))
@@ -56,76 +54,69 @@ def create_addition_set(x, y, n_digits, selected_digits, dataset_size):
     return samples, labels
 
 class MNISTDatasets:
-    def __init__(self, n_digits, selected_digits=(0, 1), root_dir=DATASET_DIR):
-        self.n_digits = n_digits
-        self.selected_digits = selected_digits
+    def __init__(self, n_digits, max_digit, dataset_dir):
+        selected_digits = tuple(range(max_digit + 1))
 
         if len(x_train) == 0:
-            load_mnist(root_dir)
+            load_mnist(dataset_dir)
 
         np.random.seed(42)
         self.train_samples, self.train_labels = create_addition_set(x_train, y_train, n_digits, selected_digits, 10000)
         self.val_samples, self.val_labels = create_addition_set(x_val, y_val, n_digits, selected_digits, int(10000 * 0.2))
         self.test_samples, self.test_labels = create_addition_set(x_test, y_test, n_digits, selected_digits, 10000)
 
-    def get_concepts(self, labels, concepts):
-        c = []
-        for d in range(self.n_digits):
-            if len(self.selected_digits) <= 2 and (concepts is None or concepts[d]):
-                c.append(labels[:, d] == self.selected_digits[1])
-            elif len(self.selected_digits) > 2:
-                for i in range(len(self.selected_digits)):
-                    if concepts is None or concepts[d][i]:
-                        c.append(labels[:, d] == self.selected_digits[i])
-        return torch.FloatTensor(np.stack(c, axis=-1))
+        concept_bank = []
+        concept_test_ground_truth = []
+        self.concept_names = []
 
-    def get_labels(self, labels, threshold=None):
-        if threshold is None:
-            return torch.LongTensor(np.sum(labels, axis=1))
+        for i in range(n_digits):
+            for j in selected_digits:
+                concept_bank.append(self.train_labels[:, i] == j)
+                concept_test_ground_truth.append(self.test_labels[:, i] == j)
+                self.concept_names.append(f"Digit {i} is {j}")
 
-        return torch.FloatTensor(np.sum(labels, axis=1) >= threshold)
+        self.concept_bank = np.stack(concept_bank, axis=1)
+        self.concept_test_ground_truth = np.stack(concept_test_ground_truth, axis=1)
 
-    def train_dl(self, concepts=None, threshold=None, concept_generator=None, additional_concepts=None):
-        if concept_generator is None:
-            c = self.get_concepts(self.train_labels, concepts)
-        else:
-            c = concept_generator(self.train_labels)
+        self.concept_generator = lambda labels: labels > (max_digit / 2)
+        self.n_concepts = n_digits
+        self.n_tasks = max_digit * n_digits + 1
+
+    def get_labels(self, labels):
+        return torch.LongTensor(np.sum(labels, axis=1))
+
+    def train_dl(self, additional_concepts=None):
+        c = self.concept_generator(self.train_labels)
         c = torch.FloatTensor(c)
         if additional_concepts is not None:
             c = torch.cat((c, torch.FloatTensor(additional_concepts)), dim=1)
         dataset = torch.utils.data.TensorDataset(
             torch.FloatTensor(self.train_samples),
-            self.get_labels(self.train_labels, threshold),
+            self.get_labels(self.train_labels),
             c
         )
         return torch.utils.data.DataLoader(dataset, batch_size=2048, num_workers=7)
 
-    def val_dl(self, concepts=None, threshold=None, concept_generator=None, additional_concepts=None):
-        if concept_generator is None:
-            c = self.get_concepts(self.val_labels, concepts)
-        else:
-            c = concept_generator(self.val_labels)
+    def val_dl(self, additional_concepts=None):
+        c = self.concept_generator(self.val_labels)
         c = torch.FloatTensor(c)
         if additional_concepts is not None:
             c = torch.cat((c, torch.FloatTensor(additional_concepts)), dim=1)
         dataset = torch.utils.data.TensorDataset(
             torch.FloatTensor(self.val_samples),
-            self.get_labels(self.val_labels, threshold),
+            self.get_labels(self.val_labels),
             c
         )
         return torch.utils.data.DataLoader(dataset, batch_size=2048, num_workers=7)
 
-    def test_dl(self, concepts=None, threshold=None, concept_generator=None, additional_concepts=None):
-        if concept_generator is None:
-            c = self.get_concepts(self.test_labels, concepts)
-        else:
-            c = concept_generator(self.test_labels)
+    def test_dl(self, additional_concepts=None):
+        c = self.concept_generator(self.test_labels)
         c = torch.FloatTensor(c)
         if additional_concepts is not None:
             c = torch.cat((c, torch.FloatTensor(additional_concepts)), dim=1)
         dataset = torch.utils.data.TensorDataset(
             torch.FloatTensor(self.test_samples),
-            self.get_labels(self.test_labels, threshold),
+            self.get_labels(self.test_labels),
             c
         )
         return torch.utils.data.DataLoader(dataset, batch_size=2048, num_workers=7)

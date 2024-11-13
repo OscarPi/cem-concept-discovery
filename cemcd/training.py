@@ -48,19 +48,19 @@ def calculate_concept_loss_weights(n_concepts, train_dl):
     return torch.FloatTensor(imbalance)
 
 def train_cem(
-    n_concepts,
-    n_tasks,
-    pre_concept_model,
-    train_dl,
-    val_dl,
-    test_dl,
-    save_path=None,
-    load=True,
-    save=True,
-    max_epochs=300,
-    pretrained_pre_concept_model=None,
-    pretrained_concept_embedding_generators=None,
-    pretrained_scoring_function=None):
+        n_concepts,
+        n_tasks,
+        pre_concept_model,
+        train_dl,
+        val_dl,
+        test_dl,
+        save_path=None,
+        load=True,
+        save=True,
+        max_epochs=300,
+        pretrained_pre_concept_model=None,
+        pretrained_concept_embedding_generators=None,
+        pretrained_scoring_function=None):
     model = ConceptEmbeddingModel(
         n_concepts,
         n_tasks,

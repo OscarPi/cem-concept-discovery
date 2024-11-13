@@ -2,25 +2,19 @@
 As with other files in the repository, based on code from https://github.com/mateoespinosa/cem
 Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
 """
-import os
 import torch
 import pickle
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
+import numpy as np
+from pathlib import Path
 
 ########################################################
 ## GENERAL DATASET GLOBAL VARIABLES
 ########################################################
 
 N_CLASSES = 50
-
-
-# IMPORANT NOTE: THIS DATASET NEEDS TO BE DOWNLOADED FIRST BEFORE BEING ABLE
-#                TO RUN ANY AwA2 EXPERIMENTS!!
-#                The dataset can be downloaded from here: https://cvml.ista.ac.at/AwA2/
-# CAN BE OVERWRITTEN WITH AN ENV VARIABLE DATASET_DIR
-DATASET_DIR = os.environ.get("DATASET_DIR", '/datasets/Animals_with_Attributes2/')
 
 #########################################################
 ## CONCEPT INFORMATION REGARDING AwA2
@@ -121,6 +115,9 @@ SELECTED_CONCEPT_SEMANTICS = [
     "quadrapedal"
 ]
 
+# Classes we use in our experiments
+SELECTED_CLASSES = [41, 5, 45, 6, 12, 28, 1, 48, 43, 30]
+
 class AwADataset(Dataset):
     """
     Returns a compatible Torch Dataset object customized for the AwA dataset
@@ -155,12 +152,12 @@ class AwADataset(Dataset):
         return image, class_label, torch.FloatTensor(attr_label)
 
 class AwADatasets:
-    def __init__(self, root_dir=DATASET_DIR, selected_classes=None):
-        with open(os.path.join(root_dir, "train.pickle"), "rb") as f:
+    def __init__(self, dataset_dir, selected_classes=SELECTED_CLASSES):
+        with (Path(dataset_dir) / "AwA2" / "train.pickle").open("rb") as f:
             train_data = pickle.load(f)
-        with open(os.path.join(root_dir, "val.pickle"), "rb") as f:
+        with (Path(dataset_dir) / "AwA2" / "val.pickle").open("rb") as f:
             val_data = pickle.load(f)
-        with open(os.path.join(root_dir, "test.pickle"), "rb") as f:
+        with (Path(dataset_dir) / "AwA2" / "test.pickle").open("rb") as f:
             test_data = pickle.load(f)
 
         self.selected_classes = selected_classes
@@ -173,6 +170,13 @@ class AwADatasets:
             self.val_data = val_data
             self.test_data =  test_data
 
+        self.concept_bank = np.array(list(map(lambda d: d["attribute_label"], self.train_data)))
+        self.concept_test_ground_truth = np.array(list(map(lambda d: d["attribute_label"], self.test_data)))
+        self.concept_names = SELECTED_CONCEPT_SEMANTICS
+
+        self.n_concept = 5
+        self.n_tasks = len(SELECTED_CLASSES)
+
     def filter_data(self, data, selected_classes):
         filtered_data = []
         for sample in data:
@@ -181,7 +185,7 @@ class AwADatasets:
                 filtered_data.append(sample)
         return filtered_data
 
-    def train_dl(self, concept_transform=None, additional_concepts=None):
+    def train_dl(self, additional_concepts=None):
         transform = transforms.Compose([
             transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
             transforms.RandomResizedCrop(299),
@@ -190,31 +194,31 @@ class AwADatasets:
             transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
         ])
         return DataLoader(
-            AwADataset(self.train_data, transform, concept_transform, additional_concepts=additional_concepts),
+            AwADataset(self.train_data, transform, lambda c: c[:5], additional_concepts=additional_concepts),
             batch_size=128,
             num_workers=7
         )
 
-    def val_dl(self, concept_transform=None, additional_concepts=None):
+    def val_dl(self, additional_concepts=None):
         transform = transforms.Compose([
             transforms.CenterCrop(299),
             transforms.ToTensor(), #implicitly divides by 255
             transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
         ])
         return DataLoader(
-            AwADataset(self.val_data, transform, concept_transform, additional_concepts=additional_concepts),
+            AwADataset(self.val_data, transform, lambda c: c[:5], additional_concepts=additional_concepts),
             batch_size=128,
             num_workers=7
         )
 
-    def test_dl(self, concept_transform=None, additional_concepts=None):
+    def test_dl(self, additional_concepts=None):
         transform = transforms.Compose([
             transforms.CenterCrop(299),
             transforms.ToTensor(), #implicitly divides by 255
             transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
         ])
         return DataLoader(
-            AwADataset(self.test_data, transform, concept_transform, additional_concepts=additional_concepts),
+            AwADataset(self.test_data, transform, lambda c: c[:5], additional_concepts=additional_concepts),
             batch_size=128,
             num_workers=7
         )

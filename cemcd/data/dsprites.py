@@ -1,7 +1,6 @@
 import numpy as np
 import torch
-
-DATASET_PATH = "/datasets/dSprites/dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz"
+from pathlib import Path
 
 class DSpritesDataset(torch.utils.data.Dataset):
     def __init__(self, imgs, imgs_start, imgs_end, permutation, concepts, labels):
@@ -22,8 +21,8 @@ class DSpritesDataset(torch.utils.data.Dataset):
         return x, self.labels[idx], self.concepts[idx]
 
 class DSpritesDatasets:
-    def __init__(self, dataset_path=DATASET_PATH):
-        dataset_zip = np.load(dataset_path)
+    def __init__(self, dataset_dir):
+        dataset_zip = np.load(Path(dataset_dir) / "dSprites" / "dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz")
 
         latents = dataset_zip["latents_classes"]
         no_rotation = latents[:, 3].squeeze() == 0
@@ -55,6 +54,55 @@ class DSpritesDatasets:
         self.quadrant_test = torch.tensor(quadrant[self.test_start:])
         self.shape_test = torch.tensor(shape[self.test_start:])
         self.scale_test = torch.tensor(scale[self.test_start:])
+
+        self.concept_bank = np.stack((
+            self.scale_train == 0,
+            self.scale_train == 1,
+            self.scale_train == 2,
+            self.scale_train == 3,
+            self.scale_train == 4,
+            self.scale_train == 5,
+            self.shape_train == 0,
+            self.shape_train == 1,
+            self.shape_train == 2,
+            self.quadrant_train == 0,
+            self.quadrant_train == 1,
+            self.quadrant_train == 2,
+            self.quadrant_train == 3
+        ), axis=1)
+        self.concept_test_ground_truth = np.stack((
+            self.scale_test == 0,
+            self.scale_test == 1,
+            self.scale_test == 2,
+            self.scale_test == 3,
+            self.scale_test == 4,
+            self.scale_test == 5,
+            self.shape_test == 0,
+            self.shape_test == 1,
+            self.shape_test == 2,
+            self.quadrant_test == 0,
+            self.quadrant_test == 1,
+            self.quadrant_test == 2,
+            self.quadrant_test == 3
+        ), axis=1)
+        self.concept_names = [
+            "Scale 0",
+            "Scale 1",
+            "Scale 2",
+            "Scale 3",
+            "Scale 4",
+            "Scale 5",
+            "Shape 0",
+            "Shape 1",
+            "Shape 2",
+            "Quadrant 0",
+            "Quadrant 1",
+            "Quadrant 2",
+            "Quadrant 3"
+        ]
+
+        self.n_concepts = 3
+        self.n_tasks = 11
 
     def train_dl(self, additional_concepts=None):
         concepts = []

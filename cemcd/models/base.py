@@ -38,12 +38,12 @@ class BaseModel(lightning.LightningModule):
         c_accuracy, c_accuracies, c_auc, c_aucs = np.nan, [np.nan], np.nan, [np.nan]
         if self.concept_loss_weight > 0:
             c_used = torch.where(
-                torch.logical_or(c == 0, c == 1),
+                torch.logical_and(c >= 0, c <= 1),
                 c,
                 torch.zeros_like(c)
             )
             predicted_concept_probs_used = torch.where(
-                torch.logical_or(c == 0, c == 1),
+                torch.logical_and(c >= 0, c <= 1),
                 predicted_concept_probs,
                 torch.zeros_like(predicted_concept_probs)
             )

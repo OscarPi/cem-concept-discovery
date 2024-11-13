@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 import pickle
 import numpy as np
@@ -111,23 +111,23 @@ PREDICATE_MATRIX = [
 
 SELECTED_CONCEPT_IDXS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 43, 44, 45]
 
-DATASET_DIR = os.environ.get("DATASET_DIR", '/datasets/Animals_with_Attributes2/')
+DATASET_DIR = Path(input("Enter the dataset directory (should contain a folder called AwA2 containing the dataset): "))
 
-IMAGES_DIR = os.path.join(DATASET_DIR, "JPEGImages")
+IMAGES_DIR = DATASET_DIR / "AwA2" / "JPEGImages"
 
 data = []
 
 for idx, class_name in enumerate(CLASS_NAMES):
-    class_dir = os.path.join(IMAGES_DIR, class_name)
-    for file_name in os.listdir(class_dir):
+    class_dir = IMAGES_DIR / class_name
+    for img_path in class_dir.iterdir():
         data.append({
             "class_label": idx,
-            "img_path": os.path.join(class_dir, file_name),
+            "img_path": str(img_path),
             "attribute_label": list(np.array(PREDICATE_MATRIX[idx])[SELECTED_CONCEPT_IDXS])
         })
 
-train, test_data = train_test_split(data, test_size=0.2)
-train_data, val_data = train_test_split(train, test_size=0.2)
+train, test_data = train_test_split(data, test_size=0.2, random_state=42)
+train_data, val_data = train_test_split(train, test_size=0.2, random_state=42)
 
 with open("train.pickle", "wb") as f:
     pickle.dump(train_data, f)

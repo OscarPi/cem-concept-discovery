@@ -1,0 +1,12 @@
+description: CUB run
+dataset: cub
+dataset_dir: /datasets/
+pre_concept_model: resnet34
+max_epochs: 150
+max_concepts_to_discover: 10
+chi: True
+reuse_model: False
+clustering_algorithm: kmeans
+discovered_labels_decay: none
+results_dir: results/
+use_wandb: True

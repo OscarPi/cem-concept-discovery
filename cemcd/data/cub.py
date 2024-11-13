@@ -2,28 +2,20 @@
 As with other files in the repository, based on code from https://github.com/mateoespinosa/cem
 Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
 """
-import os
 import torch
 import pickle
 import numpy as np
 import torchvision.transforms as transforms
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
+from collections import defaultdict
+from pathlib import Path
 
 ########################################################
 ## GENERAL DATASET GLOBAL VARIABLES
 ########################################################
 
 N_CLASSES = 200
-
-
-# IMPORANT NOTE: THIS DATASET NEEDS TO BE DOWNLOADED FIRST BEFORE BEING ABLE
-#                TO RUN ANY CUB EXPERIMENTS!!
-#                Instructions on how to download it can be found
-#                in the original CBM paper's repository
-#                found here: https://github.com/yewsiang/ConceptBottleneck
-# CAN BE OVERWRITTEN WITH AN ENV VARIABLE DATASET_DIR
-DATASET_DIR = os.environ.get("DATASET_DIR", '/datasets/CUB/')
 
 #########################################################
 ## CONCEPT INFORMATION REGARDING CUB
@@ -667,6 +659,93 @@ CONCEPT_SEMANTICS = [
 
 SELECTED_CONCEPT_SEMANTICS = list(np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS])
 
+# Set of classees we use in our experiments
+SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
+
+CONCEPT_GROUPS = [
+    "has_wing_color",
+    "has_upperparts_color",
+    "has_underparts_color",
+    "has_back_color",
+    "has_upper_tail_color",
+    "has_breast_color",
+    "has_throat_color",
+    "has_forehead_color",
+    "has_under_tail_color",
+    "has_nape_color",
+    "has_belly_color",
+    "has_primary_color",
+    "has_leg_color",
+    "has_bill_color",
+    "has_crown_color"
+]
+
+def compress_colour_concepts(concepts):
+    light = defaultdict(bool)
+    dark = defaultdict(bool)
+
+    light_colours = ["white", "yellow", "blue", "buff"]
+    dark_colours = ["grey", "black", "brown"]
+
+    compressed_concepts = []
+    for idx, concept in enumerate(SELECTED_CONCEPT_SEMANTICS):
+        group = concept[:concept.find("::")]
+        if group in CONCEPT_GROUPS:
+            colour = concept[concept.find("::")+2:]
+            if concepts[idx] == 1:
+                if colour in light_colours:
+                    light[group] = True
+                elif colour in dark_colours:
+                    dark[group] = True
+                else:
+                    print(colour)
+                    raise RuntimeError("unrecognised colour")
+
+    for group in CONCEPT_GROUPS:
+        if light[group]:
+            compressed_concepts.append(1)
+        else:
+            compressed_concepts.append(0)
+        if dark[group]:
+            compressed_concepts.append(1)
+        else:
+            compressed_concepts.append(0)
+
+    return compressed_concepts
+
+COMPRESSED_CONCEPT_SEMANTICS = [
+    'has_wing_color::light',
+    'has_wing_color::dark',
+    'has_upperparts_color::light',
+    'has_upperparts_color::dark',
+    'has_underparts_color::light',
+    'has_underparts_color::dark',
+    'has_back_color::light',
+    'has_back_color::dark',
+    'has_upper_tail_color::light',
+    'has_upper_tail_color::dark',
+    'has_breast_color::light',
+    'has_breast_color::dark',
+    'has_throat_color::light',
+    'has_throat_color::dark',
+    'has_forehead_color::light',
+    'has_forehead_color::dark',
+    'has_under_tail_color::light',
+    'has_under_tail_color::dark',
+    'has_nape_color::light',
+    'has_nape_color::dark',
+    'has_belly_color::light',
+    'has_belly_color::dark',
+    'has_primary_color::light',
+    'has_primary_color::dark',
+    'has_leg_color::light',
+    'has_leg_color::dark',
+    'has_bill_color::light',
+    'has_bill_color::dark',
+    'has_crown_color::light',
+    'has_crown_color::dark'
+]
+
 class CUBDataset(Dataset):
     """
     Returns a compatible Torch Dataset object customized for the CUB dataset
@@ -686,7 +765,7 @@ class CUBDataset(Dataset):
         image_data = self.data[idx]
         image_path = image_data['img_path']
 
-        image_path = os.path.join(self.image_dir, image_path[78:])
+        image_path = self.image_dir / image_path[78:]
         image = Image.open(image_path).convert('RGB')
 
         class_label = image_data['class_label']
@@ -704,14 +783,15 @@ class CUBDataset(Dataset):
         return image, class_label, torch.FloatTensor(attr_label)
 
 class CUBDatasets:
-    def __init__(self, root_dir=DATASET_DIR, selected_classes=None):
-        self.image_dir = os.path.join(root_dir, "images")
-        base_dir = os.path.join(root_dir, "class_attr_data_10")
-        with open(os.path.join(base_dir, "train.pkl"), "rb") as f:
+    def __init__(self, dataset_dir, selected_classes=SELECTED_CLASSES):
+        
+        self.image_dir = Path(dataset_dir) / "CUB" / "images"
+        base_dir = Path(dataset_dir) / "CUB" / "class_attr_data_10"
+        with (base_dir / "train.pkl").open("rb") as f:
             train_data = pickle.load(f)
-        with open(os.path.join(base_dir, "val.pkl"), "rb") as f:
+        with (base_dir / "val.pkl").open("rb") as f:
             val_data = pickle.load(f)
-        with open(os.path.join(base_dir, "test.pkl"), "rb") as f:
+        with (base_dir / "test.pkl").open("rb") as f:
             test_data = pickle.load(f)
 
         self.selected_classes = selected_classes
@@ -724,6 +804,13 @@ class CUBDatasets:
             self.val_data = val_data
             self.test_data =  test_data
 
+        self.concept_bank = np.array(list(map(lambda d: d["attribute_label"], self.train_data)))
+        self.concept_test_ground_truth = np.array(list(map(lambda d: d["attribute_label"], self.test_data)))
+        self.concept_names = SELECTED_CONCEPT_SEMANTICS
+
+        self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
+        self.n_tasks = len(SELECTED_CLASSES)
+
     def filter_data(self, data, selected_classes):
         filtered_data = []
         for sample in data:
@@ -732,7 +819,7 @@ class CUBDatasets:
                 filtered_data.append(sample)
         return filtered_data
 
-    def train_dl(self, concept_transform=None, additional_concepts=None):
+    def train_dl(self, additional_concepts=None):
         transform = transforms.Compose([
             transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
             transforms.RandomResizedCrop(299),
@@ -741,31 +828,31 @@ class CUBDatasets:
             transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
         ])
         return DataLoader(
-            CUBDataset(self.train_data, self.image_dir, transform, concept_transform, additional_concepts=additional_concepts),
+            CUBDataset(self.train_data, self.image_dir, transform, compress_colour_concepts, additional_concepts=additional_concepts),
             batch_size=128,
             num_workers=7
         )
 
-    def val_dl(self, concept_transform=None, additional_concepts=None):
+    def val_dl(self, additional_concepts=None):
         transform = transforms.Compose([
             transforms.CenterCrop(299),
             transforms.ToTensor(), #implicitly divides by 255
             transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
         ])
         return DataLoader(
-            CUBDataset(self.val_data, self.image_dir, transform, concept_transform, additional_concepts=additional_concepts),
+            CUBDataset(self.val_data, self.image_dir, transform, compress_colour_concepts, additional_concepts=additional_concepts),
             batch_size=128,
             num_workers=7
         )
 
-    def test_dl(self, concept_transform=None, additional_concepts=None):
+    def test_dl(self, additional_concepts=None):
         transform = transforms.Compose([
             transforms.CenterCrop(299),
             transforms.ToTensor(), #implicitly divides by 255
             transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
         ])
         return DataLoader(
-            CUBDataset(self.test_data, self.image_dir, transform, concept_transform, additional_concepts=additional_concepts),
+            CUBDataset(self.test_data, self.image_dir, transform, compress_colour_concepts, additional_concepts=additional_concepts),
             batch_size=128,
             num_workers=7
         )
