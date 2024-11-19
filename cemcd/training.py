@@ -1,6 +1,5 @@
 from cemcd.models.cem import ConceptEmbeddingModel
 from cemcd.models.cbm import ConceptBottleneckModel
-import os
 import torch
 import lightning
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
@@ -55,19 +54,16 @@ def train_cem(
         val_dl,
         test_dl,
         save_path=None,
-        load=True,
-        save=True,
         max_epochs=300,
-        pretrained_pre_concept_model=None,
         pretrained_concept_embedding_generators=None,
         pretrained_scoring_function=None):
+    
     model = ConceptEmbeddingModel(
         n_concepts,
         n_tasks,
         pre_concept_model,
         calculate_task_class_weights(n_tasks, train_dl),
         calculate_concept_loss_weights(n_concepts, train_dl),
-        pretrained_pre_concept_model,
         pretrained_concept_embedding_generators,
         pretrained_scoring_function)
 
@@ -85,20 +81,17 @@ def train_cem(
         ],
     )
 
-    if save_path is not None and os.path.exists(save_path) and load:
-        model.load_state_dict(torch.load(save_path))
-    else:
-        trainer.fit(model, train_dl, val_dl)
+    trainer.fit(model, train_dl, val_dl)
 
-        if save and save_path is not None:
-            torch.save(model.state_dict(), save_path)
+    if save_path is not None:
+        torch.save(model.state_dict(), save_path)
 
     model.freeze()
     [test_results] = trainer.test(model, test_dl)
 
     return model, test_results
 
-def train_cbm(n_concepts, n_tasks, concept_model, train_dl, val_dl, test_dl, black_box=False, save_path=None, load=True, save=True, max_epochs=300):
+def train_cbm(n_concepts, n_tasks, concept_model, train_dl, val_dl, test_dl, black_box=False, save_path=None, max_epochs=300):
     concept_loss_weights = None
     if not black_box:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
@@ -124,13 +117,10 @@ def train_cbm(n_concepts, n_tasks, concept_model, train_dl, val_dl, test_dl, bla
         ],
     )
 
-    if save_path is not None and os.path.exists(save_path) and load:
-        model.load_state_dict(torch.load(save_path))
-    else:
-        trainer.fit(model, train_dl, val_dl)
+    trainer.fit(model, train_dl, val_dl)
 
-        if save and save_path is not None:
-            torch.save(model.state_dict(), save_path)
+    if save_path is not None:
+        torch.save(model.state_dict(), save_path)
 
     model.freeze()
     [test_results] = trainer.test(model, test_dl)

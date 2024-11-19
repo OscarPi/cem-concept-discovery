@@ -10,16 +10,12 @@ class ConceptEmbeddingModel(base.BaseModel):
             pre_concept_model,
             task_class_weights,
             concept_loss_weights,
-            pretrained_pre_concept_model=None,
             pretrained_concept_embedding_generators=None,
             pretrained_scoring_function=None):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
 
-        if pretrained_pre_concept_model is not None:
-            self.pre_concept_model = copy.deepcopy(pretrained_pre_concept_model)
-        else:
-            self.pre_concept_model = pre_concept_model()
+        self.pre_concept_model = copy.deepcopy(pre_concept_model)
 
         self.embedding_size = 16
         self.concept_loss_weight = 10

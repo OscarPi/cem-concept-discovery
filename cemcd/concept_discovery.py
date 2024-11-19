@@ -215,7 +215,6 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
             datasets.val_dl(),
             datasets.test_dl(),
             save_path=save_path / "0_concepts_discovered.pth",
-            load=False,
             max_epochs=config["max_epochs"])
         model_0 = model
 
@@ -288,7 +287,7 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
             axis=1
         )
 
-        pretrained_pre_concept_model = None
+        pretrained_pre_concept_model = pre_concept_model
         pretrained_concept_embedding_generators = None
         pretrained_scoring_function = None
         if config["reuse_model"]:
@@ -298,14 +297,12 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
         model_next, _ = train_cem(
             datasets.n_concepts + state["n_discovered_concepts"],
             datasets.n_tasks,
-            pre_concept_model,
+            pretrained_pre_concept_model,
             datasets.train_dl(state["discovered_concept_labels"]),
             datasets.val_dl(np.full((val_dataset_size, state["discovered_concept_labels"].shape[1]), np.nan)),
             datasets.test_dl(np.full((test_dataset_size, state["discovered_concept_labels"].shape[1]), np.nan)),
             save_path=save_path / f"{state['n_discovered_concepts']}_concepts_discovered.pth",
-            load=False,
             max_epochs=config["max_epochs"],
-            pretrained_pre_concept_model=pretrained_pre_concept_model,
             pretrained_concept_embedding_generators=pretrained_concept_embedding_generators,
             pretrained_scoring_function=pretrained_scoring_function)
         c_pred_next, c_embs_next, _ = calculate_embeddings(model_next, datasets.train_dl(state["discovered_concept_labels"]))

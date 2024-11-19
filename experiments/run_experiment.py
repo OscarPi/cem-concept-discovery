@@ -90,17 +90,18 @@ def create_run_name(results_dir):
 def make_pre_concept_model(config):
     if config["pre_concept_model"] == "cnn":
         cnn_config = config["pre_concept_cnn_config"]
-        return lambda: get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"])
+        return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"])
     elif config["pre_concept_model"] == "resnet34":
-        return lambda: resnet34(pretrained=True)
+        return resnet34(pretrained=True)
 
     raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
 
 def make_concept_model(config, n_concepts):
     if config["pre_concept_model"] == "cnn":
         cnn_config = config["pre_concept_cnn_config"]
-        return lambda: get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"], n_concepts)
+        return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"], n_concepts)
     elif config["pre_concept_model"] == "resnet34":
+        return torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, n_concepts))
         return lambda: torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, n_concepts))
 
     raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
@@ -158,7 +159,6 @@ def run_experiment(resume, run_dir, config):
         test_dl=datasets.test_dl(),
         black_box=False,
         save_path=run_dir / "cbm_baseline.pth",
-        load=False,
         max_epochs=config["max_epochs"])
     cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
     cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
@@ -172,7 +172,7 @@ def run_experiment(resume, run_dir, config):
 
     # CBM with concept loss weight of 0 is a black box
     _, black_box_test_results = train_cbm(
-        n_concepts=list(pre_concept_model().modules())[-1].out_features,
+        n_concepts=list(pre_concept_model.modules())[-1].out_features,
         n_tasks=datasets.n_tasks,
         concept_model=pre_concept_model,
         train_dl=datasets.train_dl(),
@@ -180,7 +180,6 @@ def run_experiment(resume, run_dir, config):
         test_dl=datasets.test_dl(),
         black_box=True,
         save_path=run_dir / "black_box_baseline.pth",
-        load=False,
         max_epochs=config["max_epochs"]
     )
     black_box_task_accuracy = round(black_box_test_results["test_y_accuracy"], 4)

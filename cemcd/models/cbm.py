@@ -1,11 +1,12 @@
 import torch
 from cemcd.models import base
+import copy
 
 class ConceptBottleneckModel(base.BaseModel):
     def __init__(self, n_concepts, n_tasks, concept_model, task_class_weights, concept_loss_weights, black_box=False):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
-        self.concept_model = concept_model()
+        self.concept_model = copy.deepcopy(concept_model)
         self.concept_loss_weight = 10
         self.black_box = black_box
         if black_box:
