@@ -1,5 +1,6 @@
 from cemcd.models.cem import ConceptEmbeddingModel
 from cemcd.models.cbm import ConceptBottleneckModel
+from cemcd.models.clustercem import ClusterCEM
 import torch
 import lightning
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
@@ -56,16 +57,29 @@ def train_cem(
         save_path=None,
         max_epochs=300,
         pretrained_concept_embedding_generators=None,
-        pretrained_scoring_function=None):
+        pretrained_scoring_function=None,
+        clustercem=False,
+        n_clusters=25):
     
-    model = ConceptEmbeddingModel(
-        n_concepts,
-        n_tasks,
-        pre_concept_model,
-        calculate_task_class_weights(n_tasks, train_dl),
-        calculate_concept_loss_weights(n_concepts, train_dl),
-        pretrained_concept_embedding_generators,
-        pretrained_scoring_function)
+    if clustercem:
+        model = ClusterCEM(
+            n_concepts,
+            n_tasks,
+            pre_concept_model,
+            calculate_task_class_weights(n_tasks, train_dl),
+            calculate_concept_loss_weights(n_concepts, train_dl),
+            pretrained_concept_embedding_generators,
+            pretrained_scoring_function,
+            n_clusters=n_clusters)
+    else:
+        model = ConceptEmbeddingModel(
+            n_concepts,
+            n_tasks,
+            pre_concept_model,
+            calculate_task_class_weights(n_tasks, train_dl),
+            calculate_concept_loss_weights(n_concepts, train_dl),
+            pretrained_concept_embedding_generators,
+            pretrained_scoring_function)
 
     trainer = lightning.Trainer(
         max_epochs=max_epochs,

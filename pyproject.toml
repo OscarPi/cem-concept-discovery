@@ -11,7 +11,8 @@ dependencies = [
     "matplotlib>=3.8.2",
     "Pillow>=10.3.0",
     "wandb>=0.18.5",
-    "PyYAML>=6.0.2"
+    "PyYAML>=6.0.2",
+    "plotly>=5.24.1"
 ]
 
 [tool.setuptools.packages.find]

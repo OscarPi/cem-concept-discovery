@@ -1,0 +1,17 @@
+description: dSprites clustercem run
+dataset: dsprites
+dataset_dir: /datasets/
+pre_concept_model: cnn
+pre_concept_cnn_config:
+  width: 64
+  height: 64
+  channels: 1
+max_epochs: 500
+max_concepts_to_discover: 10
+chi: True
+reuse_model: False
+clustering_algorithm: clustercem
+n_clusters: 10
+discovered_labels_decay: none
+results_dir: results/
+use_wandb: True

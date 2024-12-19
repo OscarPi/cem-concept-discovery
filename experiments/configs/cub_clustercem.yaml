@@ -1,0 +1,13 @@
+description: CUB run clustercem
+dataset: cub
+dataset_dir: /datasets/
+pre_concept_model: resnet34
+max_epochs: 500
+max_concepts_to_discover: 3
+chi: True
+reuse_model: False
+clustering_algorithm: clustercem
+n_clusters: 25
+discovered_labels_decay: none
+results_dir: results/
+use_wandb: True

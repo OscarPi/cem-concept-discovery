@@ -10,6 +10,7 @@ import pickle
 from cemcd.training import train_cem
 from pathlib import Path
 from cemcd.models.cem import ConceptEmbeddingModel 
+from cemcd.models.clustercem import ClusterCEM
 import torch
 import wandb
 import yaml
@@ -43,7 +44,8 @@ def discover_concept(
         concept_on,
         chi,
         clustering_algorithm,
-        discovered_labels_decay):
+        discovered_labels_decay,
+        cluster_assignments=None):
     sample_filter = c_pred[:, concept_idx] >= 0.5
 
     if not concept_on:
@@ -54,16 +56,23 @@ def discover_concept(
     for i in range(10):
         if clustering_algorithm == "kmeans":
             clusters = KMeans(n_clusters=25, n_init=10).fit(embeddings) # TODO: used to explicitly change
+            cluster_labels = clusters.labels_
         elif clustering_algorithm == "hdbscan":
-            clusters = HDBSCAN().fit(embeddings)
+            cluster_labels = HDBSCAN().fit(embeddings).labels_
+        elif clustering_algorithm == "clustercem":
+            cluster_labels = cluster_assignments[concept_idx][sample_filter].cpu().detach().numpy()
         else:
             raise NotImplementedError(f"Unrecognised clustering algorithm: {clustering_algorithm}")
 
-        largest_cluster_label = stats.mode(clusters.labels_)[0]
-        largest_cluster_size = np.sum(clusters.labels_ == largest_cluster_label)
+        clusters, counts = np.unique(cluster_labels, return_counts=True)
+        median_cluster_label = clusters[np.argsort(counts)[len(counts)//2]]
+        #largest_cluster_label = stats.mode(cluster_labels)[0]
+        median_cluster_size = np.sum(cluster_labels == median_cluster_label)
+        print(f"median cluster size: {median_cluster_size}")
+        print(f"total size: {cluster_labels.shape}")
 
         if clustering_algorithm == "kmeans":
-            embeddings_size = clusters.labels_.shape[0]
+            embeddings_size = cluster_labels.shape[0]
             buffer_size = int(embeddings_size*0.7)
             marked_as_off_size = embeddings_size-(largest_cluster_size+buffer_size)
             if marked_as_off_size < embeddings_size*0.2:
@@ -83,7 +92,7 @@ def discover_concept(
 
         else:
             labels = np.zeros(c_embs.shape[0])
-            labels[sample_filter][clusters.labels_ == largest_cluster_label] = 1
+            labels[sample_filter] = cluster_labels == median_cluster_label
         if chi:
             labels[np.logical_not(sample_filter)] = 0
         
@@ -134,7 +143,7 @@ def _get_accuracies(test_results, n_provided_concepts):
 
     return task_accuracy, provided_concept_accuracy, discovered_concept_accuracy, provided_concept_auc, discovered_concept_auc
 
-def find_best_concept_to_cluster(concepts_to_try, c_pred, c_embs, clustering_algorithm="kmeans"):
+def find_best_concept_to_cluster(concepts_to_try, c_pred, c_embs, clustering_algorithm="kmeans", cluster_assignments=None):
     best_concept = None
     best_concept_on = None
     best_score = 0
@@ -147,10 +156,17 @@ def find_best_concept_to_cluster(concepts_to_try, c_pred, c_embs, clustering_alg
             options_to_remove.append((concept, on))
             continue
         if clustering_algorithm == "kmeans":
-            clusters = KMeans(n_clusters=25, n_init=10).fit(c_embs[:, concept][sample_filter])
+            cluster_labels = KMeans(n_clusters=25, n_init=10).fit(c_embs[:, concept][sample_filter]).labels_
         elif clustering_algorithm == "hdbscan":
-            clusters = HDBSCAN().fit(c_embs[:, concept][sample_filter])
-        score = silhouette_score(c_embs[:, concept][sample_filter], clusters.labels_)
+            cluster_labels = HDBSCAN().fit(c_embs[:, concept][sample_filter]).labels_
+        elif clustering_algorithm == "clustercem":
+            cluster_labels = cluster_assignments[concept][sample_filter].cpu().detach().numpy()
+
+        if np.unique(cluster_labels).size < 2:
+            options_to_remove.append((concept, on))
+            continue
+
+        score = silhouette_score(c_embs[:, concept][sample_filter], cluster_labels)
         if score > best_score:
             best_concept = concept
             best_score = score
@@ -188,22 +204,42 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
         with state_path.open("rb") as f:
             state = pickle.load(f)
 
-        model_0 = ConceptEmbeddingModel(
-            n_concepts=datasets.n_concepts,
-            n_tasks=datasets.n_tasks,
-            pre_concept_model=pre_concept_model,
-            task_class_weights=torch.full((datasets.n_tasks,), np.nan),
-            concept_loss_weights=torch.full((datasets.n_concepts,), np.nan)
-        )
+        if config["clustering_algorithm"] == "clustercem":
+            model_0 = ClusterCEM(
+                n_concepts=datasets.n_concepts,
+                n_tasks=datasets.n_tasks,
+                pre_concept_model=pre_concept_model,
+                task_class_weights=torch.full((datasets.n_tasks,), np.nan),
+                concept_loss_weights=torch.full((datasets.n_concepts,), np.nan),
+                n_clusters=config["n_clusters"]
+            )
+        else:
+            model_0 = ConceptEmbeddingModel(
+                n_concepts=datasets.n_concepts,
+                n_tasks=datasets.n_tasks,
+                pre_concept_model=pre_concept_model,
+                task_class_weights=torch.full((datasets.n_tasks,), np.nan),
+                concept_loss_weights=torch.full((datasets.n_concepts,), np.nan)
+            )
         model_0.load_state_dict(torch.load(save_path / "0_concepts_discovered.pth"))
 
-        model = ConceptEmbeddingModel(
-            n_concepts=datasets.n_concepts + state["n_discovered_concepts"],
-            n_tasks=datasets.n_tasks,
-            pre_concept_model=pre_concept_model,
-            task_class_weights=torch.full((datasets.n_tasks,), np.nan),
-            concept_loss_weights=torch.full((datasets.n_concepts + state["n_discovered_concepts"],), np.nan)
-        )
+        if config["clustering_algorithm"] == "clustercem":
+            model = ClusterCEM(
+                n_concepts=datasets.n_concepts + state["n_discovered_concepts"],
+                n_tasks=datasets.n_tasks,
+                pre_concept_model=pre_concept_model,
+                task_class_weights=torch.full((datasets.n_tasks,), np.nan),
+                concept_loss_weights=torch.full((datasets.n_concepts + state["n_discovered_concepts"],), np.nan),
+                n_clusters=config["n_clusters"]
+            )
+        else:
+            model = ConceptEmbeddingModel(
+                n_concepts=datasets.n_concepts + state["n_discovered_concepts"],
+                n_tasks=datasets.n_tasks,
+                pre_concept_model=pre_concept_model,
+                task_class_weights=torch.full((datasets.n_tasks,), np.nan),
+                concept_loss_weights=torch.full((datasets.n_concepts + state["n_discovered_concepts"],), np.nan)
+            )
         model.load_state_dict(torch.load(save_path / f"{state['n_discovered_concepts']}_concepts_discovered.pth"))
 
     else:
@@ -215,7 +251,9 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
             datasets.val_dl(),
             datasets.test_dl(),
             save_path=save_path / "0_concepts_discovered.pth",
-            max_epochs=config["max_epochs"])
+            max_epochs=config["max_epochs"],
+            clustercem=config["clustering_algorithm"] == "clustercem",
+            n_clusters=config["n_clusters"] if "n_clusters" in config else 0)
         model_0 = model
 
         task_accuracy, \
@@ -251,7 +289,8 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
             state["concepts_left_to_try"],
             state["c_pred"],
             state["c_embs"], 
-            clustering_algorithm=config["clustering_algorithm"])
+            clustering_algorithm=config["clustering_algorithm"],
+            cluster_assignments=model.cluster_assignments if config["clustering_algorithm"] == "clustercem" else None)
 
         for option in options_to_remove:
             state["concepts_left_to_try"].remove(option)
@@ -269,7 +308,8 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
             concept_on,
             chi=config["chi"],
             clustering_algorithm=config["clustering_algorithm"],
-            discovered_labels_decay=config["discovered_labels_decay"]
+            discovered_labels_decay=config["discovered_labels_decay"],
+            cluster_assignments=model.cluster_assignments if config["clustering_algorithm"] == "clustercem" else None
         )
 
         if new_concept_labels is None:
@@ -304,7 +344,9 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
             save_path=save_path / f"{state['n_discovered_concepts']}_concepts_discovered.pth",
             max_epochs=config["max_epochs"],
             pretrained_concept_embedding_generators=pretrained_concept_embedding_generators,
-            pretrained_scoring_function=pretrained_scoring_function)
+            pretrained_scoring_function=pretrained_scoring_function,
+            clustercem=config["clustering_algorithm"] == "clustercem",
+            n_clusters=config["n_clusters"] if "n_clusters" in config else 0)
         c_pred_next, c_embs_next, _ = calculate_embeddings(model_next, datasets.train_dl(state["discovered_concept_labels"]))
 
         similarities = np.mean(
@@ -339,6 +381,10 @@ def discover_multiple_concepts(config, resume, pre_concept_model, save_path, dat
                 pickle.dump(state, f)
             continue
 
+        print(f"""new_concept_labels:
+        0: {np.sum(new_concept_labels == 0)}
+        1: {np.sum(new_concept_labels == 1)}
+        nan: {np.sum(np.isnan(new_concept_labels))}""")
         if config["use_wandb"]:
             twod = TSNE(
                 n_components=2,

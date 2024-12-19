@@ -16,7 +16,7 @@ class DSpritesDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         img_idx = self.permutation[idx + self.imgs_start]
-        x = torch.tensor(self.imgs[img_idx][None, :]) / 255.0
+        x = torch.tensor(self.imgs[img_idx][None, :])# / 255.0
 
         return x, self.labels[idx], self.concepts[idx]
 
@@ -27,7 +27,7 @@ class DSpritesDatasets:
         latents = dataset_zip["latents_classes"]
         no_rotation = latents[:, 3].squeeze() == 0
 
-        self.imgs = dataset_zip["imgs"][no_rotation]
+        self.imgs = dataset_zip["imgs"][no_rotation].astype(np.float32)
 
         l = len(self.imgs)
         generator = np.random.default_rng(42)

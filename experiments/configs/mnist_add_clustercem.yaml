@@ -1,0 +1,20 @@
+description: MNIST_ADD clustercem with reconstruction loss, large cluster loss and pick median cluster, 10 digits
+dataset: mnist_add
+dataset_dir: /datasets/
+mnist_config:
+  n_digits: 3
+  max_digit: 3
+pre_concept_model: cnn
+pre_concept_cnn_config:
+  width: 28
+  height: 28
+  channels: 3
+max_epochs: 500
+max_concepts_to_discover: 3
+chi: True
+reuse_model: False
+clustering_algorithm: clustercem
+n_clusters: 4
+discovered_labels_decay: none
+results_dir: results/
+use_wandb: True

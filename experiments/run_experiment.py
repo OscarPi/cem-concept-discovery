@@ -73,9 +73,9 @@ def load_datasets(config):
             dataset_dir=config["dataset_dir"],
         )
     elif config["dataset"] == "dsprites":
-        return dsprites.DSpritesDatasets()
+        return dsprites.DSpritesDatasets(dataset_dir=config["dataset_dir"])
     elif config["dataset"] == "cub":
-        return cub.CUBDatasets()
+        return cub.CUBDatasets(dataset_dir=config["dataset_dir"])
     elif config["dataset"] == "awa":
         return awa.AwADatasets()
 
@@ -102,7 +102,6 @@ def make_concept_model(config, n_concepts):
         return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"], n_concepts)
     elif config["pre_concept_model"] == "resnet34":
         return torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, n_concepts))
-        return lambda: torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, n_concepts))
 
     raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
 
