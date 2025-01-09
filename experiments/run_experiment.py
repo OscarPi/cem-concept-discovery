@@ -75,7 +75,7 @@ def load_datasets(config):
     elif config["dataset"] == "dsprites":
         return dsprites.DSpritesDatasets()
     elif config["dataset"] == "cub":
-        return cub.CUBDatasets()
+        return cub.CUBDatasets(dataset_dir=config["dataset_dir"])
     elif config["dataset"] == "awa":
         return awa.AwADatasets()
 

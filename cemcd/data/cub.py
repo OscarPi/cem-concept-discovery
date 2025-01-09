@@ -5,11 +5,11 @@ Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/maste
 import torch
 import pickle
 import numpy as np
-import torchvision.transforms as transforms
+from  cemcd.data import transforms
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
 from collections import defaultdict
 from pathlib import Path
+from cemcd.data.base import Datasets
 
 ########################################################
 ## GENERAL DATASET GLOBAL VARIABLES
@@ -22,7 +22,6 @@ N_CLASSES = 200
 #########################################################
 
 # CUB Class names
-
 CLASS_NAMES = [
     "Black_footed_Albatross",
     "Laysan_Albatross",
@@ -660,7 +659,7 @@ CONCEPT_SEMANTICS = [
 SELECTED_CONCEPT_SEMANTICS = list(np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS])
 
 # Set of classees we use in our experiments
-SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
+#SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
 
 CONCEPT_GROUPS = [
     "has_wing_color",
@@ -698,8 +697,7 @@ def compress_colour_concepts(concepts):
                 elif colour in dark_colours:
                     dark[group] = True
                 else:
-                    print(colour)
-                    raise RuntimeError("unrecognised colour")
+                    raise RuntimeError(f"unrecognised colour: {colour}")
 
     for group in CONCEPT_GROUPS:
         if light[group]:
@@ -746,46 +744,14 @@ COMPRESSED_CONCEPT_SEMANTICS = [
     'has_crown_color::dark'
 ]
 
-class CUBDataset(Dataset):
-    """
-    Returns a compatible Torch Dataset object customized for the CUB dataset
-    """
-
-    def __init__(self, data, image_dir, transform=None, concept_transform=None, additional_concepts=None):
-        self.data = data
-        self.image_dir = image_dir
-        self.transform = transform
-        self.concept_transform = concept_transform
-        self.additional_concepts = additional_concepts
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        image_data = self.data[idx]
-        image_path = image_data['img_path']
-
-        image_path = self.image_dir / image_path[78:]
-        image = Image.open(image_path).convert('RGB')
-
-        class_label = image_data['class_label']
-        if self.transform:
-            image = self.transform(image)
-
-        attr_label = image_data['attribute_label']
-        if self.concept_transform is not None:
-            attr_label = self.concept_transform(attr_label)
-
-        if self.additional_concepts is not None:
-            for i in self.additional_concepts[idx]:
-                attr_label.append(i)
-        
-        return image, class_label, torch.FloatTensor(attr_label)
-
-class CUBDatasets:
-    def __init__(self, dataset_dir, selected_classes=SELECTED_CLASSES):
-        
-        self.image_dir = Path(dataset_dir) / "CUB" / "images"
+class CUBDatasets(Datasets):
+    def __init__(
+            self,
+            foundation_model=None,
+            dataset_dir="/datasets",
+            model_dir="/checkpoints",
+            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+        image_dir = Path(dataset_dir) / "CUB" / "images"
         base_dir = Path(dataset_dir) / "CUB" / "class_attr_data_10"
         with (base_dir / "train.pkl").open("rb") as f:
             train_data = pickle.load(f)
@@ -794,65 +760,51 @@ class CUBDatasets:
         with (base_dir / "test.pkl").open("rb") as f:
             test_data = pickle.load(f)
 
-        self.selected_classes = selected_classes
-        if selected_classes is not None:
-            self.train_data = self.filter_data(train_data, selected_classes)
-            self.val_data = self.filter_data(val_data, selected_classes)
-            self.test_data = self.filter_data(test_data, selected_classes)
-        else:
-            self.train_data = train_data
-            self.val_data = val_data
-            self.test_data =  test_data
+        def data_generator(data):
+            for example in data:
+                image_path = example["img_path"]
+                image_path = image_dir / image_path[78:]
+                image = Image.open(image_path).convert("RGB")
+                class_label = example["class_label"]
+                attr_label = example["attribute_label"]
+                attr_label = compress_colour_concepts(attr_label)
 
-        self.concept_bank = np.array(list(map(lambda d: d["attribute_label"], self.train_data)))
-        self.concept_test_ground_truth = np.array(list(map(lambda d: d["attribute_label"], self.test_data)))
+                yield image, class_label, torch.FloatTensor(attr_label)
+
+        train_img_transform = None
+        val_test_img_transform = None
+        if foundation_model is None:
+            train_img_transform = transforms.resnet_train
+            val_test_img_transform = transforms.resnet_val_test
+
+        super().__init__(
+            train_data=data_generator(train_data),
+            val_data=data_generator(val_data),
+            test_data=data_generator(test_data),
+            foundation_model=foundation_model,
+            train_img_transform=train_img_transform,
+            val_test_img_transform=val_test_img_transform,
+            model_dir=model_dir,
+            device=device
+        )
+        # self.selected_classes = selected_classes
+        # if selected_classes is not None:
+        #     self.train_data = self._filter_data(train_data, selected_classes)
+        #     self.val_data = self._filter_data(val_data, selected_classes)
+        #     self.test_data = self._filter_data(test_data, selected_classes)
+        # else:
+
+        self.concept_bank = np.array(list(map(lambda d: d["attribute_label"], train_data)))
+        self.concept_test_ground_truth = np.array(list(map(lambda d: d["attribute_label"], test_data)))
         self.concept_names = SELECTED_CONCEPT_SEMANTICS
 
         self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
-        self.n_tasks = len(SELECTED_CLASSES)
+        self.n_tasks = N_CLASSES
 
-    def filter_data(self, data, selected_classes):
-        filtered_data = []
-        for sample in data:
-            if sample["class_label"] in selected_classes:
-                sample["class_label"] = selected_classes.index(sample["class_label"])
-                filtered_data.append(sample)
-        return filtered_data
-
-    def train_dl(self, additional_concepts=None):
-        transform = transforms.Compose([
-            transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
-            transforms.RandomResizedCrop(299),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(), #implicitly divides by 255
-            transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-        ])
-        return DataLoader(
-            CUBDataset(self.train_data, self.image_dir, transform, compress_colour_concepts, additional_concepts=additional_concepts),
-            batch_size=128,
-            num_workers=7
-        )
-
-    def val_dl(self, additional_concepts=None):
-        transform = transforms.Compose([
-            transforms.CenterCrop(299),
-            transforms.ToTensor(), #implicitly divides by 255
-            transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-        ])
-        return DataLoader(
-            CUBDataset(self.val_data, self.image_dir, transform, compress_colour_concepts, additional_concepts=additional_concepts),
-            batch_size=128,
-            num_workers=7
-        )
-
-    def test_dl(self, additional_concepts=None):
-        transform = transforms.Compose([
-            transforms.CenterCrop(299),
-            transforms.ToTensor(), #implicitly divides by 255
-            transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-        ])
-        return DataLoader(
-            CUBDataset(self.test_data, self.image_dir, transform, compress_colour_concepts, additional_concepts=additional_concepts),
-            batch_size=128,
-            num_workers=7
-        )
+    # def _filter_data(self, data, selected_classes):
+    #     filtered_data = []
+    #     for sample in data:
+    #         if sample["class_label"] in selected_classes:
+    #             sample["class_label"] = selected_classes.index(sample["class_label"])
+    #             filtered_data.append(sample)
+    #     return filtered_data

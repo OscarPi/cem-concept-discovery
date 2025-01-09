@@ -8,10 +8,9 @@ class ConceptEmbeddingModel(base.BaseModel):
             n_concepts,
             n_tasks,
             pre_concept_model,
+            latent_representation_size,
             task_class_weights,
-            concept_loss_weights,
-            pretrained_concept_embedding_generators=None,
-            pretrained_scoring_function=None):
+            concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
 
@@ -20,21 +19,14 @@ class ConceptEmbeddingModel(base.BaseModel):
         self.embedding_size = 16
         self.concept_loss_weight = 10
 
-        latent_representation_size = list(self.pre_concept_model.modules())[-1].out_features
-        if pretrained_concept_embedding_generators is not None:
-            self.concept_embedding_generators = copy.deepcopy(pretrained_concept_embedding_generators)
-        else:
-            self.concept_embedding_generators = torch.nn.ModuleList()
-        for _ in range(self.n_concepts - len(self.concept_embedding_generators)):
+        self.concept_embedding_generators = torch.nn.ModuleList()
+        for _ in range(self.n_concepts):
             self.concept_embedding_generators.append(torch.nn.Sequential(
                 torch.nn.Linear(latent_representation_size, self.embedding_size * 2),
                 torch.nn.LeakyReLU()
             ))
 
-        if pretrained_scoring_function is not None:
-            self.scoring_function = copy.deepcopy(pretrained_scoring_function)
-        else:
-            self.scoring_function = torch.nn.Linear(self.embedding_size * 2, 1)
+        self.scoring_function = torch.nn.Linear(self.embedding_size * 2, 1)
 
         self.label_predictor = torch.nn.Sequential(
             torch.nn.Linear(self.n_concepts * self.embedding_size, 128),
@@ -47,7 +39,10 @@ class ConceptEmbeddingModel(base.BaseModel):
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x, c_true=None, train=False):
-        latent = self.pre_concept_model(x)
+        if self.pre_concept_model is None:
+            latent = x
+        else:
+            latent = self.pre_concept_model(x)
 
         concept_embeddings = []
         predicted_concept_probs = []
