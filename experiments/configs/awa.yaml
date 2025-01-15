@@ -1,12 +1,15 @@
 description: AwA run
 dataset: awa
-dataset_dir: /datasets/
+dataset_dir: /datasets
+model_dir: /checkpoints
 pre_concept_model: resnet34
-max_epochs: 150
-max_concepts_to_discover: 10
-chi: False
-reuse_model: False
-clustering_algorithm: kmeans
-discovered_labels_decay: none
+max_epochs: 500
+n_clusters: 25
+foundation_models:
+  - dinov2
+  - clip
+minimum_cluster_size: 50
 results_dir: results/
 use_wandb: True
+max_concepts_to_discover: 1000
+cache_dir: /cache/awa

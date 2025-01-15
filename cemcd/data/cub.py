@@ -749,6 +749,7 @@ class CUBDatasets(Datasets):
             self,
             foundation_model=None,
             dataset_dir="/datasets",
+            cache_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         image_dir = Path(dataset_dir) / "CUB" / "images"
@@ -760,8 +761,9 @@ class CUBDatasets(Datasets):
         with (base_dir / "test.pkl").open("rb") as f:
             test_data = pickle.load(f)
 
-        def data_generator(data):
-            for example in data:
+        def data_getter(data):
+            def getter(idx):
+                example = data[idx]
                 image_path = example["img_path"]
                 image_path = image_dir / image_path[78:]
                 image = Image.open(image_path).convert("RGB")
@@ -769,7 +771,9 @@ class CUBDatasets(Datasets):
                 attr_label = example["attribute_label"]
                 attr_label = compress_colour_concepts(attr_label)
 
-                yield image, class_label, torch.FloatTensor(attr_label)
+                return image, class_label, torch.FloatTensor(attr_label)
+            getter.length = len(data)
+            return getter
 
         train_img_transform = None
         val_test_img_transform = None
@@ -778,12 +782,13 @@ class CUBDatasets(Datasets):
             val_test_img_transform = transforms.resnet_val_test
 
         super().__init__(
-            train_data=data_generator(train_data),
-            val_data=data_generator(val_data),
-            test_data=data_generator(test_data),
+            train_getter=data_getter(train_data),
+            val_getter=data_getter(val_data),
+            test_getter=data_getter(test_data),
             foundation_model=foundation_model,
             train_img_transform=train_img_transform,
             val_test_img_transform=val_test_img_transform,
+            cache_dir=cache_dir,
             model_dir=model_dir,
             device=device
         )
@@ -794,9 +799,11 @@ class CUBDatasets(Datasets):
         #     self.test_data = self._filter_data(test_data, selected_classes)
         # else:
 
-        self.concept_bank = np.array(list(map(lambda d: d["attribute_label"], train_data)))
-        self.concept_test_ground_truth = np.array(list(map(lambda d: d["attribute_label"], test_data)))
-        self.concept_names = SELECTED_CONCEPT_SEMANTICS
+        train_concepts = np.array(list(map(lambda d: d["attribute_label"], train_data)))
+        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
+        test_concepts = np.array(list(map(lambda d: d["attribute_label"], test_data)))
+        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
+        self.concept_names = SELECTED_CONCEPT_SEMANTICS + list(map(lambda s: "NOT " + s, SELECTED_CONCEPT_SEMANTICS))
 
         self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
         self.n_tasks = N_CLASSES

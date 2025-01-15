@@ -90,6 +90,33 @@ def train_cem(
 
     return model, test_results
 
+def load_cem(
+        n_concepts,
+        n_tasks,
+        pre_concept_model,
+        latent_representation_size,
+        train_dl,
+        test_dl,
+        path):
+    
+    model = ConceptEmbeddingModel(
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        pre_concept_model=pre_concept_model,
+        latent_representation_size=latent_representation_size,
+        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
+        concept_loss_weights=calculate_concept_loss_weights(n_concepts, train_dl)
+    )
+
+    trainer = lightning.Trainer()
+
+    model.load_state_dict(torch.load(path))
+
+    model.freeze()
+    [test_results] = trainer.test(model, test_dl)
+
+    return model, test_results
+
 def train_cbm(
         n_concepts,
         n_tasks,

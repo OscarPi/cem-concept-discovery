@@ -4,11 +4,11 @@ Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/maste
 """
 import torch
 import pickle
-import torchvision.transforms as transforms
+from cemcd.data import transforms
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from pathlib import Path
+from cemcd.data.base import Datasets
 
 ########################################################
 ## GENERAL DATASET GLOBAL VARIABLES
@@ -116,109 +116,60 @@ SELECTED_CONCEPT_SEMANTICS = [
 ]
 
 # Classes we use in our experiments
-SELECTED_CLASSES = [41, 5, 45, 6, 12, 28, 1, 48, 43, 30]
+#SELECTED_CLASSES = [41, 5, 45, 6, 12, 28, 1, 48, 43, 30]
 
-class AwADataset(Dataset):
-    """
-    Returns a compatible Torch Dataset object customized for the AwA dataset
-    """
-
-    def __init__(self, data, transform=None, concept_transform=None, additional_concepts=None):
-        self.data = data
-        self.transform = transform
-        self.concept_transform = concept_transform
-        self.additional_concepts = additional_concepts
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        image_data = self.data[idx]
-        image_path = image_data["img_path"]
-        image = Image.open(image_path).convert("RGB")
-
-        class_label = image_data["class_label"]
-        if self.transform:
-            image = self.transform(image)
-
-        attr_label = image_data["attribute_label"]
-        if self.concept_transform is not None:
-            attr_label = self.concept_transform(attr_label)
-
-        if self.additional_concepts is not None:
-            for i in self.additional_concepts[idx]:
-                attr_label.append(i)
-        
-        return image, class_label, torch.FloatTensor(attr_label)
-
-class AwADatasets:
-    def __init__(self, dataset_dir, selected_classes=SELECTED_CLASSES):
-        with (Path(dataset_dir) / "AwA2" / "train.pickle").open("rb") as f:
+class AwADatasets(Datasets):
+    def __init__(
+            self,
+            foundation_model=None,
+            dataset_dir="/datasets",
+            cache_dir=None,
+            model_dir="/checkpoints",
+            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+        dataset_dir = Path(dataset_dir)
+        with (dataset_dir / "AwA2" / "train.pickle").open("rb") as f:
             train_data = pickle.load(f)
-        with (Path(dataset_dir) / "AwA2" / "val.pickle").open("rb") as f:
+        with (dataset_dir / "AwA2" / "val.pickle").open("rb") as f:
             val_data = pickle.load(f)
-        with (Path(dataset_dir) / "AwA2" / "test.pickle").open("rb") as f:
+        with (dataset_dir / "AwA2" / "test.pickle").open("rb") as f:
             test_data = pickle.load(f)
 
-        self.selected_classes = selected_classes
-        if selected_classes is not None:
-            self.train_data = self.filter_data(train_data, selected_classes)
-            self.val_data = self.filter_data(val_data, selected_classes)
-            self.test_data = self.filter_data(test_data, selected_classes)
-        else:
-            self.train_data = train_data
-            self.val_data = val_data
-            self.test_data =  test_data
+        def data_getter(data):
+            def getter(idx):
+                example = data[idx]
+                image_path = dataset_dir / example["img_path"]
+                image = Image.open(image_path).convert("RGB")
+                class_label = example["class_label"]
+                attr_label = example["attribute_label"]
+                attr_label = attr_label[:5]
 
-        self.concept_bank = np.array(list(map(lambda d: d["attribute_label"], self.train_data)))
-        self.concept_test_ground_truth = np.array(list(map(lambda d: d["attribute_label"], self.test_data)))
-        self.concept_names = SELECTED_CONCEPT_SEMANTICS
+                return image, class_label, torch.FloatTensor(attr_label)
+            getter.length = len(data)
+            return getter
 
-        self.n_concept = 5
-        self.n_tasks = len(SELECTED_CLASSES)
+        train_img_transform = None
+        val_test_img_transform = None
+        if foundation_model is None:
+            train_img_transform = transforms.resnet_train
+            val_test_img_transform = transforms.resnet_val_test
 
-    def filter_data(self, data, selected_classes):
-        filtered_data = []
-        for sample in data:
-            if sample["class_label"] in selected_classes:
-                sample["class_label"] = selected_classes.index(sample["class_label"])
-                filtered_data.append(sample)
-        return filtered_data
-
-    def train_dl(self, additional_concepts=None):
-        transform = transforms.Compose([
-            transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
-            transforms.RandomResizedCrop(299),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(), #implicitly divides by 255
-            transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-        ])
-        return DataLoader(
-            AwADataset(self.train_data, transform, lambda c: c[:5], additional_concepts=additional_concepts),
-            batch_size=128,
-            num_workers=7
+        super().__init__(
+            train_getter=data_getter(train_data),
+            val_getter=data_getter(val_data),
+            test_getter=data_getter(test_data),
+            foundation_model=foundation_model,
+            train_img_transform=train_img_transform,
+            val_test_img_transform=val_test_img_transform,
+            cache_dir=cache_dir,
+            model_dir=model_dir,
+            device=device
         )
 
-    def val_dl(self, additional_concepts=None):
-        transform = transforms.Compose([
-            transforms.CenterCrop(299),
-            transforms.ToTensor(), #implicitly divides by 255
-            transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-        ])
-        return DataLoader(
-            AwADataset(self.val_data, transform, lambda c: c[:5], additional_concepts=additional_concepts),
-            batch_size=128,
-            num_workers=7
-        )
+        train_concepts = np.array(list(map(lambda d: d["attribute_label"], train_data)))
+        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
+        test_concepts = np.array(list(map(lambda d: d["attribute_label"], test_data)))
+        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
+        self.concept_names = SELECTED_CONCEPT_SEMANTICS + list(map(lambda s: "NOT " + s, SELECTED_CONCEPT_SEMANTICS))
 
-    def test_dl(self, additional_concepts=None):
-        transform = transforms.Compose([
-            transforms.CenterCrop(299),
-            transforms.ToTensor(), #implicitly divides by 255
-            transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
-        ])
-        return DataLoader(
-            AwADataset(self.test_data, transform, lambda c: c[:5], additional_concepts=additional_concepts),
-            batch_size=128,
-            num_workers=7
-        )
+        self.n_concepts = 5
+        self.n_tasks = N_CLASSES

@@ -4,7 +4,6 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm import trange
-from scipy.optimize import linear_sum_assignment
 
 def run_turtle(Zs, k, warm_start=False, gamma=10.):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
