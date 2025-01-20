@@ -99,11 +99,22 @@ def load_config(config_file):
 def load_datasets(config):
     if config["dataset"] == "mnist_add":
         mnist_config = config["mnist_config"]
-        return mnist.MNISTDatasets(
+        datasets = [mnist.MNISTDatasets(
             n_digits=mnist_config["n_digits"],
             max_digit=mnist_config["max_digit"],
             dataset_dir=config["dataset_dir"],
-        )
+        )]
+        for foundation_model in config["foundation_models"]:
+            print(f"Running foundation model {foundation_model}.")
+            datasets.append(mnist.MNISTDatasets(
+                n_digits=mnist_config["n_digits"],
+                max_digit=mnist_config["max_digit"],
+                foundation_model=foundation_model,
+                dataset_dir=config["dataset_dir"],
+                cache_dir=config.get("cache_dir", None),
+                model_dir=config["model_dir"],
+            ))
+        return datasets
     elif config["dataset"] == "dsprites":
         return dsprites.DSpritesDatasets()
     elif config["dataset"] == "cub":
@@ -162,6 +173,7 @@ def get_intervention_accuracies(model, test_dl, concepts_to_intervene):
     task_accuracy = round(test_results["test_y_accuracy"], 4)
     intervention_accuracies.append(task_accuracy)
     for c in concepts_to_intervene:
+        model.intervention_mask = torch.tensor([0] * model.n_concepts)
         model.intervention_mask[c] = 1
         [test_results] = trainer.test(model, test_dl)
         task_accuracy = round(test_results["test_y_accuracy"], 4)
@@ -251,7 +263,7 @@ def run_experiment(run_dir, config):
         log(model_results)
         initial_models.append(model)
 
-    discovered_concept_labels, discovered_concept_test_ground_truth, discovered_concept_roc_aucs = cemcd.concept_discovery.discover_concepts(
+    discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs = cemcd.concept_discovery.discover_concepts(
         config=config,
         save_path=run_dir,
         initial_models=initial_models[1:],
@@ -282,44 +294,69 @@ def run_experiment(run_dir, config):
         discovered_concept_aucs=discovered_concept_roc_aucs,
         discovered_concept_test_ground_truth=discovered_concept_test_ground_truth)
     log(intervention_results)
-  
-    concept_model = make_concept_model(config, datasets[0].n_concepts)
-    cbm, cbm_test_results = train_cbm(
-        n_concepts=datasets[0].n_concepts,
-        n_tasks=datasets[0].n_tasks,
-        concept_model=concept_model,
-        train_dl=datasets[0].train_dl(),
-        val_dl=datasets[0].val_dl(),
-        test_dl=datasets[0].test_dl(),
-        black_box=False,
-        save_path=run_dir / "cbm_baseline.pth",
-        max_epochs=config["max_epochs"])
-    cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
-    cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
-    cbm_intervention_accuracies = get_intervention_accuracies(
-        model=cbm,
-        test_dl=datasets[0].test_dl(),
-        concepts_to_intervene=range(cbm.n_concepts))
-    log({
-        "cbm_task_accuracy": cbm_task_accuracy,
-        "cbm_concept_auc": cbm_concept_auc,
-        "cbm_intervention_accuracies": cbm_intervention_accuracies
-    })
 
-    # CBM with concept loss weight of 0 is a black box
-    _, black_box_test_results = train_cbm(
-        n_concepts=list(pre_concept_model.modules())[-1].out_features,
-        n_tasks=datasets[0].n_tasks,
-        concept_model=pre_concept_model,
-        train_dl=datasets[0].train_dl(),
-        val_dl=datasets[0].val_dl(),
-        test_dl=datasets[0].test_dl(),
-        black_box=True,
-        save_path=run_dir / "black_box_baseline.pth",
-        max_epochs=config["max_epochs"]
-    )
-    black_box_task_accuracy = round(black_box_test_results["test_y_accuracy"], 4)
-    log({"black_box_task_accuracy": black_box_task_accuracy})
+    models_with_perfect_discovered_concepts = []
+    for dataset in datasets:
+        model, test_results = train_cem(
+            n_concepts=dataset.n_concepts + n_discovered_concepts,
+            n_tasks=dataset.n_tasks,
+            pre_concept_model=pre_concept_model if dataset.foundation_model is None else None,
+            latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
+            train_dl=dataset.train_dl(discovered_concept_train_ground_truth),
+            val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            save_path=run_dir / f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem.pth",
+            max_epochs=config["max_epochs"]
+        )
+        model_results = get_accuracies(test_results, dataset.n_concepts, f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem")
+        log(model_results)
+        models_with_perfect_discovered_concepts.append(model)
+
+    int_baseline_results = {}
+    for dataset, model in zip(datasets, models_with_perfect_discovered_concepts):
+        model_name = (dataset.foundation_model or 'basic') + "cem"
+        intervention_accuracies = get_intervention_accuracies(model, dataset.test_dl(discovered_concept_test_ground_truth), range(dataset.n_concepts, dataset.n_concepts + n_discovered_concepts))
+        int_baseline_results[f"ground_truth_baseline_{model_name}_interventions"] = intervention_accuracies
+    log(int_baseline_results)
+
+  
+    # concept_model = make_concept_model(config, datasets[0].n_concepts)
+    # cbm, cbm_test_results = train_cbm(
+    #     n_concepts=datasets[0].n_concepts,
+    #     n_tasks=datasets[0].n_tasks,
+    #     concept_model=concept_model,
+    #     train_dl=datasets[0].train_dl(),
+    #     val_dl=datasets[0].val_dl(),
+    #     test_dl=datasets[0].test_dl(),
+    #     black_box=False,
+    #     save_path=run_dir / "cbm_baseline.pth",
+    #     max_epochs=config["max_epochs"])
+    # cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
+    # cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
+    # cbm_intervention_accuracies = get_intervention_accuracies(
+    #     model=cbm,
+    #     test_dl=datasets[0].test_dl(),
+    #     concepts_to_intervene=range(cbm.n_concepts))
+    # log({
+    #     "cbm_task_accuracy": cbm_task_accuracy,
+    #     "cbm_concept_auc": cbm_concept_auc,
+    #     "cbm_intervention_accuracies": cbm_intervention_accuracies
+    # })
+
+    # # CBM with concept loss weight of 0 is a black box
+    # _, black_box_test_results = train_cbm(
+    #     n_concepts=list(pre_concept_model.modules())[-1].out_features,
+    #     n_tasks=datasets[0].n_tasks,
+    #     concept_model=pre_concept_model,
+    #     train_dl=datasets[0].train_dl(),
+    #     val_dl=datasets[0].val_dl(),
+    #     test_dl=datasets[0].test_dl(),
+    #     black_box=True,
+    #     save_path=run_dir / "black_box_baseline.pth",
+    #     max_epochs=config["max_epochs"]
+    # )
+    # black_box_task_accuracy = round(black_box_test_results["test_y_accuracy"], 4)
+    # log({"black_box_task_accuracy": black_box_task_accuracy})
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")

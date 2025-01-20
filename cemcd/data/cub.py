@@ -658,9 +658,6 @@ CONCEPT_SEMANTICS = [
 
 SELECTED_CONCEPT_SEMANTICS = list(np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS])
 
-# Set of classees we use in our experiments
-#SELECTED_CLASSES = [140, 139, 38, 187, 167, 147, 25, 16, 119, 101, 184, 186, 90, 159, 17, 142, 154, 80, 131, 100]
-
 CONCEPT_GROUPS = [
     "has_wing_color",
     "has_upperparts_color",
@@ -792,12 +789,6 @@ class CUBDatasets(Datasets):
             model_dir=model_dir,
             device=device
         )
-        # self.selected_classes = selected_classes
-        # if selected_classes is not None:
-        #     self.train_data = self._filter_data(train_data, selected_classes)
-        #     self.val_data = self._filter_data(val_data, selected_classes)
-        #     self.test_data = self._filter_data(test_data, selected_classes)
-        # else:
 
         train_concepts = np.array(list(map(lambda d: d["attribute_label"], train_data)))
         self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
@@ -807,11 +798,3 @@ class CUBDatasets(Datasets):
 
         self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
         self.n_tasks = N_CLASSES
-
-    # def _filter_data(self, data, selected_classes):
-    #     filtered_data = []
-    #     for sample in data:
-    #         if sample["class_label"] in selected_classes:
-    #             sample["class_label"] = selected_classes.index(sample["class_label"])
-    #             filtered_data.append(sample)
-    #     return filtered_data

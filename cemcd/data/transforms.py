@@ -18,25 +18,24 @@ def _safe_to_tensor(x):
     else:
         return torchvision.transforms.ToTensor()(x)
 
-def get_default_transforms():
-    return torchvision.transforms.Compose([
-        torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
-        torchvision.transforms.CenterCrop(224),
-        _convert_image_to_rgb,
-        _safe_to_tensor,
-        torchvision.transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
-    ])
+default_transforms = torchvision.transforms.Compose([
+    torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
+    torchvision.transforms.CenterCrop(224),
+    _convert_image_to_rgb,
+    _safe_to_tensor,
+    torchvision.transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+])
 
 resnet_train = torchvision.transforms.Compose([
     torchvision.transforms.ColorJitter(brightness=32/255, saturation=(0.5, 1.5)),
     torchvision.transforms.RandomResizedCrop(299),
     torchvision.transforms.RandomHorizontalFlip(),
-    torchvision.transforms.ToTensor(),
+    _safe_to_tensor,
     torchvision.transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
 ])
 
 resnet_val_test = torchvision.transforms.Compose([
     torchvision.transforms.CenterCrop(299),
-    torchvision.transforms.ToTensor(),
+    _safe_to_tensor,
     torchvision.transforms.Normalize(mean = [0.5, 0.5, 0.5], std = [2, 2, 2])
 ])

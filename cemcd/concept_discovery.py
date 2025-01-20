@@ -1,15 +1,15 @@
 import numpy as np
 import lightning
 import pickle
-from cemcd.training import train_cem
 from pathlib import Path
-from cemcd.models.cem import ConceptEmbeddingModel 
-import torch
+import sklearn.metrics
 import wandb
-import yaml
 import cemcd.turtle as turtle
 import sklearn
-from tqdm import trange
+from tqdm import tqdm
+import yaml
+import torch
+from cemcd.training import train_cem
 
 def calculate_embeddings(model, dl):
     trainer = lightning.Trainer()
@@ -33,191 +33,266 @@ def calculate_embeddings(model, dl):
 
     return c_pred, c_embs, y_pred
 
-def get_accuracies(test_results, n_provided_concepts):
-    task_accuracy = round(test_results['test_y_accuracy'], 4)
-    provided_concept_accuracies = []
-    discovered_concept_accuracies = []
-    provided_concept_aucs = []
-    discovered_concept_aucs = []
-    for key, value in test_results.items():
-        if key[:7] == "concept":
-            n = int(key.split("_")[1])
-            if n <= n_provided_concepts:
-                if key[-3:] == "auc":
-                    provided_concept_aucs.append(value)
-                else:
-                    provided_concept_accuracies.append(value)
-            else:
-                if key[-3:] == "auc":
-                    discovered_concept_aucs.append(value)
-                else:
-                    discovered_concept_accuracies.append(value)
+def fill_in_discovered_concept_labels(datasets, labels, max_epochs):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    provided_concept_accuracy = round(np.mean(provided_concept_accuracies), 4)
-    provided_concept_auc = round(np.mean(provided_concept_aucs), 4)
-    if len(discovered_concept_accuracies) > 0:
-        discovered_concept_accuracy = round(np.mean(discovered_concept_accuracies), 4)
-        discovered_concept_auc = round(np.mean(discovered_concept_aucs), 4)
-    else:
-        discovered_concept_accuracy = np.nan
-        discovered_concept_auc = np.nan
+    xs = datasets[0].train_x
+    for dataset in datasets[1:]:
+        xs = torch.concat((xs, dataset.train_x), dim=1)
+    non_nan_xs = xs[np.logical_not(np.isnan(labels))]
+    dataloader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(
+            non_nan_xs,
+            torch.from_numpy(labels[np.logical_not(np.isnan(labels))].astype(np.float32))),
+        batch_size=1024
+    )
 
-    print()
-    print(f"After {len(discovered_concept_accuracies)} concepts have been discovered:")
-    print(f"\tTask accuracy: {task_accuracy}")
-    print(f"\tProvided concept accuracy: {provided_concept_accuracy}")
-    print(f"\tDiscovered concept accuracy: {discovered_concept_accuracy}")
-    print(f"\tProvided concept AUC: {provided_concept_auc}")
-    print(f"\tDiscovered concept AUC: {discovered_concept_auc}")
+    model = torch.nn.Sequential(
+        torch.nn.Linear(non_nan_xs.shape[1], 1),
+        torch.nn.Sigmoid()
+    )
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999))
+    loss_fn = torch.nn.BCELoss()
+    
+    model.to(device)
+    model.train()
+    for _ in range(max_epochs):
+        for x, y in dataloader:
+            x, y = x.to(device), y.to(device)
+            pred = model(x)
+            loss = loss_fn(pred.squeeze(), y)
 
-    return task_accuracy, provided_concept_accuracy, discovered_concept_accuracy, provided_concept_auc, discovered_concept_auc
+            loss.backward()
+            optimiser.step()
+            optimiser.zero_grad()
 
-def discover_concepts(config, save_path, datasets):
+    model.eval()
+    with torch.no_grad():
+        full_labels = model(xs.to(device)).detach().cpu().numpy()
+
+    return full_labels.squeeze() >= 0.5
+
+def majority_vote(xs):
+    not_nan = xs[np.logical_not(np.isnan(xs))]
+    if not_nan.size == 0:
+        return np.nan
+    return np.bincount(not_nan.astype(int)).argmax().astype(float)
+
+def match_to_concept_bank(labels, dataset, save_path, max_epochs):
+    train_dataset_size = len(dataset.train_dl().dataset)
+    test_dataset_size = len(dataset.test_dl().dataset)
+
+    deduplicated_discovered_concept_labels = np.zeros((train_dataset_size, 0))
+    discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
+    discovered_concept_train_ground_truth = np.zeros((train_dataset_size, 0))
+    discovered_concept_semantics = []
+    discovered_concept_roc_aucs = []
+
+    for idx in range(labels.shape[1]):
+        not_nan = np.logical_not(np.isnan(labels[:, idx]))
+        best_roc_auc = 0
+        best_roc_auc_idx = None
+        for j in range(dataset.concept_bank.shape[1]):
+            if np.all(dataset.concept_bank[:, j][not_nan] == 0) or np.all(dataset.concept_bank[:, j][not_nan] == 1):
+                continue
+            auc = sklearn.metrics.roc_auc_score(
+                dataset.concept_bank[:, j][not_nan],
+                labels[:, idx][not_nan],
+            )
+            if auc > best_roc_auc:
+                best_roc_auc = auc
+                best_roc_auc_idx = j
+
+        if dataset.concept_names[best_roc_auc_idx] not in discovered_concept_semantics:
+            discovered_concept_test_ground_truth = np.concatenate(
+                (discovered_concept_test_ground_truth, np.expand_dims(dataset.concept_test_ground_truth[:, best_roc_auc_idx], axis=1)),
+                axis=1
+            )
+            discovered_concept_train_ground_truth = np.concatenate(
+                (discovered_concept_train_ground_truth, np.expand_dims(dataset.concept_bank[:, best_roc_auc_idx], axis=1)),
+                axis=1
+            )
+            deduplicated_discovered_concept_labels = np.concatenate(
+                (deduplicated_discovered_concept_labels, np.expand_dims(labels[:, idx], axis=1)),
+                axis=1
+            )
+            discovered_concept_semantics.append(dataset.concept_names[best_roc_auc_idx])
+            discovered_concept_roc_aucs.append(best_roc_auc)
+
+    return deduplicated_discovered_concept_labels, \
+        discovered_concept_test_ground_truth, \
+        discovered_concept_train_ground_truth, \
+        discovered_concept_semantics, \
+        discovered_concept_roc_aucs
+
+def discover_concepts(config, save_path, initial_models, datasets):
     save_path = Path(save_path)
-    results = {}
 
     train_dataset_size = len(datasets[0].train_dl().dataset)
-    val_dataset_size = len(datasets[0].val_dl().dataset)
-    test_dataset_size = len(datasets[0].test_dl().dataset)
 
     predictions = []
     embeddings = []
-    for dataset in datasets:
-        model, test_results = train_cem(
-            n_concepts=dataset.n_concepts,
-            n_tasks=dataset.n_tasks,
-            pre_concept_model=None,
-            latent_representation_size=dataset.latent_representation_size,
-            train_dl=dataset.train_dl(),
-            val_dl=dataset.val_dl(),
-            test_dl=dataset.test_dl(),
-            save_path=save_path / f"initial_{dataset.foundation_model}cem.pth",
-            max_epochs=config["max_epochs"]
-        )
-        results.update({k + f"_{dataset.foundation_model}cem": v for k, v in test_results.items()})
-        if config["wandb"]:
-            wandb.log({k + f"_{dataset.foundation_model}cem": v for k, v in test_results.items()})
-        c_pred, c_embs, _ = calculate_embeddings(model, datasets.train_dl())
+    for dataset, model in zip(datasets, initial_models):
+        c_pred, c_embs, _ = calculate_embeddings(model, dataset.train_dl())
         predictions.append(c_pred)
         embeddings.append(c_embs)
     predictions = np.stack(predictions, axis=0)
 
+    concepts_to_cluster = []
+    for concept_idx in range(initial_models[0].n_concepts):
+        for concept_on in (True, False):
+            if concept_on:
+                n = np.sum(np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0))
+            else:
+                n = np.sum(np.logical_and.reduce(predictions[:, :, concept_idx] < 0.5, axis=0))
+            concepts_to_cluster.append((n, concept_idx, concept_on))
+    # concepts_to_cluster.sort(key=lambda t: t[0], reverse=True)
+
+    discovered_concept_labels = []
     n_discovered_concepts = 0
-    did_not_match_concept_bank = 0
-    duplicates = 0
 
-    discovered_concept_labels = np.zeros((train_dataset_size, 0))
-    discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
-    discovered_concept_semantics = []
+    for (_, concept_idx, concept_on) in tqdm(concepts_to_cluster):
+        if concept_on:
+            sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0)
+        else:
+            sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] < 0.5, axis=0)
 
-    for concept_idx in trange(datasets[0].n_concepts):
-        for warm_start in (True, False):
-            for concept_on in (True, False):
-                if concept_on:
-                    sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0)
-                else:
-                    sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] < 0.5, axis=0)
+        Zs = []
+        for e in embeddings:
+            Zs.append(e[:, concept_idx][sample_filter])
 
-                dino_embeddings = dino_c_embs[:, concept_idx][sample_filter]
-                clip_embeddings = clip_c_embs[:, concept_idx][sample_filter]
+        cluster_labels, _ = turtle.run_turtle(
+            Zs=Zs, k=config["n_clusters"], warm_start=config["warm_start"])
 
-                cluster_labels, _ = turtle.run_turtle(
-                    Zs=[dino_embeddings, clip_embeddings], k=config["n_clusters"], warm_start=warm_start)
+        clusters = np.unique(cluster_labels)
 
-                clusters, counts = np.unique(cluster_labels, return_counts=True)
+        for cluster in clusters:
+            labels = np.repeat(np.nan, train_dataset_size)
+            labels[sample_filter] = cluster_labels == cluster
 
-                for cluster_idx, cluster in enumerate(clusters):
-                    labels = np.repeat(np.nan, dino_c_embs.shape[0])
-                    labels[sample_filter] = cluster_labels == cluster
+            if np.sum(labels == 1) < config["minimum_cluster_size"] or np.sum(labels == 0) < config["minimum_cluster_size"]:
+                continue
 
-                    if np.sum(labels == 1) < 30 or np.sum(labels == 0) < 30:
-                        continue
+            # labels = fill_in_discovered_concept_labels(
+            #     datasets=datasets,
+            #     labels=labels,
+            #     max_epochs=config["max_epochs"])
+            
+            # most_similar = 0
+            # for already_discovered in discovered_concept_labels:
+            #     similarity = sklearn.metrics.roc_auc_score(
+            #         already_discovered,
+            #         labels
+            #     )
+            #     if similarity > most_similar:
+            #         most_similar = similarity
+            # if most_similar > 0.5:
+            #     duplicates_caught += 1
+            #     continue
 
-                    best_roc_auc = 0
-                    best_roc_auc_idx = None
-                    for i in range(dino_datasets.concept_bank.shape[1]):
-                        if np.all(dino_datasets.concept_bank[:, i][sample_filter] == 0) or np.all(dino_datasets.concept_bank[:, i][sample_filter] == 1):
-                            continue
-                        auc = sklearn.metrics.roc_auc_score(
-                            dino_datasets.concept_bank[:, i][sample_filter],
-                            labels[sample_filter],
-                        )
-                        if auc > best_roc_auc:
-                            best_roc_auc = auc
-                            best_roc_auc_idx = i
-                    
-                    discovered_concept_labels = np.concatenate(
-                        (discovered_concept_labels, np.expand_dims(labels, axis=1)),
-                        axis=1
-                    )
-                    discovered_concept_test_ground_truth = np.concatenate(
-                        (discovered_concept_test_ground_truth, np.expand_dims(dino_datasets.concept_test_ground_truth[:, best_roc_auc_idx], axis=1)),
-                    axis=1
-                    )
-                    discovered_concept_semantics.append(dino_datasets.concept_names[best_roc_auc_idx])
-                    wandb.log({"best_roc_auc": best_roc_auc, "semantics": dino_datasets.concept_names[best_roc_auc_idx]})
-                    n_discovered_concepts += 1
+            # for idx in range(len(discovered_concept_labels)):
+            #     discovered_concept = np.apply_along_axis(majority_vote, axis=1, arr=discovered_concept_labels[idx])
+            #     overlap = np.logical_and(
+            #         np.logical_not(np.isnan(labels)),
+            #         np.logical_not(np.isnan(discovered_concept))
+            #     )
+            #     if np.sum(overlap) < config["minimum_cluster_size"] or np.all(labels[overlap] == 0) or np.all(labels[overlap] == 1) or np.all(discovered_concept[overlap] == 0) or np.all(discovered_concept[overlap] == 1):
+            #         continue
+            #     similarity = sklearn.metrics.roc_auc_score(
+            #         discovered_concept[overlap],
+            #         labels[overlap]
+            #     )
+            #     if similarity > 0.9:
+            #         discovered_concept_labels[idx] = np.concatenate((discovered_concept_labels[idx], np.expand_dims(labels, axis=1)), axis=1)
+            #         break
+            # else:
+            discovered_concept_labels.append(labels)
+            n_discovered_concepts += 1
+            if n_discovered_concepts == config["max_concepts_to_discover"]:
+                break
+        else:
+            continue
+        break
 
-    with open("discovered_concepts.pkl", "wb") as f:
+                # similarities = np.expand_dims(labels, axis=1) == discovered_concept_labels
+                # if np.any(np.mean(similarities, axis=0) > 0.9):
+                #     continue
+
+                # best_roc_auc = 0
+                # best_roc_auc_idx = None
+                # for i in range(datasets[0].concept_bank.shape[1]):
+                #     if np.all(datasets[0].concept_bank[:, i][sample_filter] == 0) or np.all(datasets[0].concept_bank[:, i][sample_filter] == 1):
+                #         continue
+                #     auc = sklearn.metrics.roc_auc_score(
+                #         datasets[0].concept_bank[:, i][sample_filter],
+                #         labels[sample_filter],
+                #     )
+                #     if auc > best_roc_auc:
+                #         best_roc_auc = auc
+                #         best_roc_auc_idx = i
+
+    #             discovered_concept_labels = np.concatenate(
+    #                 (discovered_concept_labels, np.expand_dims(labels, axis=1)),
+    #                 axis=1
+    #             )
+    #             discovered_concept_test_ground_truth = np.concatenate(
+    #                 (discovered_concept_test_ground_truth, np.expand_dims(datasets[0].concept_test_ground_truth[:, best_roc_auc_idx], axis=1)),
+    #             axis=1
+    #             )
+    #             discovered_concept_semantics.append(datasets[0].concept_names[best_roc_auc_idx])
+    #             discovered_concept_roc_aucs.append(best_roc_auc)
+    #             if config["use_wandb"]:
+    #                 wandb.log({"best_roc_auc": best_roc_auc, "semantics": datasets[0].concept_names[best_roc_auc_idx]})
+    #             n_discovered_concepts += 1
+
+    #             if n_discovered_concepts > config["max_concepts_to_discover"]:
+    #                 break
+    #         else:
+    #             continue
+    #         break
+    #     else:
+    #         continue
+    #     break
+    # else:
+    #     continue
+    # break
+    # for idx in range(len(discovered_concept_labels)):
+    #     discovered_concept_labels[idx] = np.apply_along_axis(majority_vote, axis=1, arr=discovered_concept_labels[idx])
+    # n_discovered_concepts = len(discovered_concept_labels)
+
+    discovered_concept_labels = np.stack(discovered_concept_labels, axis=-1)
+    
+    deduplicated_discovered_concept_labels, \
+    discovered_concept_test_ground_truth, \
+    discovered_concept_train_ground_truth, \
+    discovered_concept_semantics, \
+    discovered_concept_roc_aucs = match_to_concept_bank(
+        labels=discovered_concept_labels,
+        dataset=datasets[0],
+        save_path=save_path,
+        max_epochs=config["max_epochs"])
+
+    n_duplicates = discovered_concept_labels.shape[1] - deduplicated_discovered_concept_labels.shape[1]
+
+    with (save_path / "discovered_concepts.pkl").open("wb") as f:
         pickle.dump((
             discovered_concept_labels,
-            discovered_concept_test_ground_truth,
-            discovered_concept_semantics,
-            n_discovered_concepts), f)
+            discovered_concept_test_ground_truth), f)
 
-    task_accuracy, \
-    provided_concept_accuracy, \
-    discovered_concept_accuracy, \
-    provided_concept_auc, \
-    discovered_concept_auc = _get_accuracies(test_results, datasets.n_concepts)
+    with (save_path / "results.yaml").open("a") as f:
+        yaml.safe_dump({
+            "n_discovered_concepts": int(n_discovered_concepts),
+            "discovered_concept_semantics": list(map(str, discovered_concept_semantics)),
+            "discovered_concept_roc_aucs": list(map(float, discovered_concept_roc_aucs)),
+            "n_duplicates": int(n_duplicates),
+        }, f)
+    
+    if config["use_wandb"]:
+        wandb.log({
+            "n_discovered_concepts": n_discovered_concepts,
+            "discovered_concept_semantics": discovered_concept_semantics,
+            "discovered_concept_roc_aucs": discovered_concept_roc_aucs,
+            "n_duplicates": n_duplicates,
+        })
 
-
-
-        # if best_roc_auc < 0.65:
-        #     print("Concept does not seem to match any in concept bank.")
-        #     state["did_not_match_concept_bank"] += 1
-        #     state["concepts_left_to_try"].remove((concept_idx, concept_on))
-        #     with state_path.open("wb") as f:
-        #         pickle.dump(state, f)
-        #     continue
-
-
-
-        # [test_results] = trainer.test(model, datasets.test_dl(state["discovered_concept_test_ground_truth"]))
-        # task_accuracy, \
-        # provided_concept_accuracy, \
-        # discovered_concept_accuracy, \
-        # provided_concept_auc, \
-        # discovered_concept_auc = _get_accuracies(test_results, datasets.n_concepts)
-        # state["task_accuracies"].append(task_accuracy)
-        # state["provided_concept_accuracies"].append(provided_concept_accuracy)
-        # state["discovered_concept_accuracies"].append(discovered_concept_accuracy)
-        # state["provided_concept_aucs"].append(provided_concept_auc)
-        # state["discovered_concept_aucs"].append(discovered_concept_auc)
-
-
-
-    # results = {
-    #     "n_discovered_concepts": state["n_discovered_concepts"],
-    #     "rejected_because_of_similarity": state["rejected_because_of_similarity"],
-    #     "did_not_match_concept_bank": state["did_not_match_concept_bank"],
-    #     "discovered_concept_semantics": state["discovered_concept_semantics"],
-    #     "task_accuracies": state["task_accuracies"],
-    #     "provided_concept_accuracies": list(map(float, state["provided_concept_accuracies"])),
-    #     "provided_concept_aucs": list(map(float, state["provided_concept_aucs"])),
-    #     "discovered_concept_accuracies": list(map(float, state["discovered_concept_accuracies"])),
-    #     "discovered_concept_aucs": list(map(float, state["discovered_concept_aucs"]))
-    # }
-    # with (save_path / "results.yaml").open("w") as f:
-    #     yaml.safe_dump(results, f)
-
-    # if config["use_wandb"]:
-    #     semantics_data = list(zip(range(1, state['n_discovered_concepts'] + 1), state['discovered_concept_semantics']))
-    #     wandb.log({
-    #         "n_discovered_concepts": state['n_discovered_concepts'],
-    #         "rejected_because_of_similarity": state['rejected_because_of_similarity'],
-    #         "did_not_match_concept_bank": state['did_not_match_concept_bank'],
-    #         "concept_semantics": wandb.Table(data=semantics_data, columns=["Discovered concept", "Meaning"])
-    #     }, commit=False)
-
-    # return model, model_0, state["n_discovered_concepts"], state["discovered_concept_test_ground_truth"]
+    return deduplicated_discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs

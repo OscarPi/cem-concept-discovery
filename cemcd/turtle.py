@@ -34,7 +34,7 @@ def run_turtle(Zs, k, warm_start=False, gamma=10.):
     W_in, inner_opt = init_inner()
 
     # start training
-    iters_bar = trange(6000, leave=False)
+    iters_bar = trange(1000, leave=False) # TODO: hmm
     for _ in iters_bar:
         optimizer.zero_grad()
         # load batch of data
