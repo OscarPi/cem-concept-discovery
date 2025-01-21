@@ -1,6 +1,6 @@
 from pathlib import Path
-from sklearn.model_selection import train_test_split
 import pickle
+from sklearn.model_selection import train_test_split
 import numpy as np
 
 CLASS_NAMES = [
@@ -122,18 +122,18 @@ for idx, class_name in enumerate(CLASS_NAMES):
     for img_path in class_dir.iterdir():
         data.append({
             "class_label": idx,
-            "img_path": str(img_path),
+            "img_path": str(img_path.relative_to(DATASET_DIR)),
             "attribute_label": list(np.array(PREDICATE_MATRIX[idx])[SELECTED_CONCEPT_IDXS])
         })
 
 train, test_data = train_test_split(data, test_size=0.2, random_state=42)
 train_data, val_data = train_test_split(train, test_size=0.2, random_state=42)
 
-with open("train.pickle", "wb") as f:
+with (DATASET_DIR / "AwA2" / "train.pkl").open("wb") as f:
     pickle.dump(train_data, f)
 
-with open("val.pickle", "wb") as f:
+with (DATASET_DIR / "AwA2" / "val.pkl").open("wb") as f:
     pickle.dump(val_data, f)
 
-with open("test.pickle", "wb") as f:
+with (DATASET_DIR / "AwA2" / "test.pkl").open("wb") as f:
     pickle.dump(test_data, f)

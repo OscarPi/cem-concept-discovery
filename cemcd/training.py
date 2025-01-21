@@ -1,9 +1,9 @@
-from cemcd.models.cem import ConceptEmbeddingModel
-from cemcd.models.cbm import ConceptBottleneckModel
+import numpy as np
 import torch
 import lightning
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-import numpy as np
+from cemcd.models.cem import ConceptEmbeddingModel
+from cemcd.models.cbm import ConceptBottleneckModel
 
 def calculate_task_class_weights(n_tasks, train_dl):
     attribute_count = np.zeros((max(n_tasks, 2),))
@@ -50,22 +50,20 @@ def train_cem(
         n_concepts,
         n_tasks,
         pre_concept_model,
+        latent_representation_size,
         train_dl,
         val_dl,
         test_dl,
         save_path=None,
-        max_epochs=300,
-        pretrained_concept_embedding_generators=None,
-        pretrained_scoring_function=None):
-    
+        max_epochs=300):
     model = ConceptEmbeddingModel(
-        n_concepts,
-        n_tasks,
-        pre_concept_model,
-        calculate_task_class_weights(n_tasks, train_dl),
-        calculate_concept_loss_weights(n_concepts, train_dl),
-        pretrained_concept_embedding_generators,
-        pretrained_scoring_function)
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        pre_concept_model=pre_concept_model,
+        latent_representation_size=latent_representation_size,
+        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
+        concept_loss_weights=calculate_concept_loss_weights(n_concepts, train_dl)
+    )
 
     trainer = lightning.Trainer(
         max_epochs=max_epochs,
@@ -91,17 +89,54 @@ def train_cem(
 
     return model, test_results
 
-def train_cbm(n_concepts, n_tasks, concept_model, train_dl, val_dl, test_dl, black_box=False, save_path=None, max_epochs=300):
-    concept_loss_weights = None
-    if not black_box:
-        concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
-    model = ConceptBottleneckModel(
+def load_cem(
+        n_concepts,
+        n_tasks,
+        pre_concept_model,
+        latent_representation_size,
+        train_dl,
+        test_dl,
+        path):
+    model = ConceptEmbeddingModel(
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        pre_concept_model=pre_concept_model,
+        latent_representation_size=latent_representation_size,
+        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
+        concept_loss_weights=calculate_concept_loss_weights(n_concepts, train_dl)
+    )
+
+    trainer = lightning.Trainer()
+
+    model.load_state_dict(torch.load(path))
+
+    model.freeze()
+    [test_results] = trainer.test(model, test_dl)
+
+    return model, test_results
+
+def train_cbm(
         n_concepts,
         n_tasks,
         concept_model,
-        calculate_task_class_weights(n_tasks, train_dl),
-        concept_loss_weights,
-        black_box=black_box)
+        train_dl,
+        val_dl,
+        test_dl,
+        black_box=False,
+        save_path=None,
+        max_epochs=300):
+    concept_loss_weights = None
+    if not black_box:
+        concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
+
+    model = ConceptBottleneckModel(
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        concept_model=concept_model,
+        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
+        concept_loss_weights=concept_loss_weights,
+        black_box=black_box
+    )
 
     trainer = lightning.Trainer(
         max_epochs=max_epochs,

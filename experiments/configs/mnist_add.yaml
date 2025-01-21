@@ -1,19 +1,22 @@
-description: MNIST_ADD baseline run
+description: MNIST_ADD run
 dataset: mnist_add
-dataset_dir: /datasets/
+dataset_dir: /datasets
+model_dir: /checkpoints
 mnist_config:
   n_digits: 2
   max_digit: 6
 pre_concept_model: cnn
 pre_concept_cnn_config:
-  width: 28
-  height: 28
-  channels: 2
-max_epochs: 300
+  width: 256
+  height: 256
+  channels: 3
+max_epochs: 500
+n_clusters: 25
+foundation_models:
+  - dinov2
+  - clip
+minimum_cluster_size: 50
 max_concepts_to_discover: 10
-chi: True
-reuse_model: False
-clustering_algorithm: kmeans
-discovered_labels_decay: none
 results_dir: results/
 use_wandb: True
+cache_dir: /cache/mnist

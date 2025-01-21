@@ -28,7 +28,7 @@ def calculate_concept_accuracies(c_pred, c_true):
         else:
             auc = sklearn.metrics.roc_auc_score(
                 truth,
-                prediction,
+                prediction
             )
         c_aucs.append(auc)
         overall_auc += auc
