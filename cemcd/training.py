@@ -1,9 +1,9 @@
-from cemcd.models.cem import ConceptEmbeddingModel
-from cemcd.models.cbm import ConceptBottleneckModel
+import numpy as np
 import torch
 import lightning
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-import numpy as np
+from cemcd.models.cem import ConceptEmbeddingModel
+from cemcd.models.cbm import ConceptBottleneckModel
 
 def calculate_task_class_weights(n_tasks, train_dl):
     attribute_count = np.zeros((max(n_tasks, 2),))
@@ -56,7 +56,6 @@ def train_cem(
         test_dl,
         save_path=None,
         max_epochs=300):
-    
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
@@ -98,7 +97,6 @@ def load_cem(
         train_dl,
         test_dl,
         path):
-    
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
@@ -130,13 +128,15 @@ def train_cbm(
     concept_loss_weights = None
     if not black_box:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
+
     model = ConceptBottleneckModel(
-        n_concepts,
-        n_tasks,
-        concept_model,
-        calculate_task_class_weights(n_tasks, train_dl),
-        concept_loss_weights,
-        black_box=black_box)
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        concept_model=concept_model,
+        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
+        concept_loss_weights=concept_loss_weights,
+        black_box=black_box
+    )
 
     trainer = lightning.Trainer(
         max_epochs=max_epochs,

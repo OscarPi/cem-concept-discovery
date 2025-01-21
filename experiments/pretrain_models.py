@@ -1,6 +1,6 @@
-from cemcd.training import train_cem
-import torch
 from pathlib import Path
+import torch
+from cemcd.training import train_cem
 from run_experiment import parse_arguments, load_config, load_datasets, make_pre_concept_model
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 # Adapted from https://github.com/mlbio-epfl/turtle/blob/main/dataset_preparation/data_utils.py
-
-import torchvision.transforms
 import torch
+import torchvision.transforms
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)

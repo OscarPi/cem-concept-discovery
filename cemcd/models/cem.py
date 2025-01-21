@@ -1,6 +1,6 @@
+import copy
 import torch
 from cemcd.models import base
-import copy
 
 class ConceptEmbeddingModel(base.BaseModel):
     def __init__(

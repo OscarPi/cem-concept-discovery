@@ -1,9 +1,9 @@
 # Adapted from https://github.com/mlbio-epfl/turtle
 
+from tqdm import trange
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
-from tqdm import trange
 
 def run_turtle(Zs, k, warm_start=False, gamma=10.):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -34,7 +34,7 @@ def run_turtle(Zs, k, warm_start=False, gamma=10.):
     W_in, inner_opt = init_inner()
 
     # start training
-    iters_bar = trange(1000, leave=False) # TODO: hmm
+    iters_bar = trange(6000, leave=False)
     for _ in iters_bar:
         optimizer.zero_grad()
         # load batch of data

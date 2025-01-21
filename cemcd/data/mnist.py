@@ -1,9 +1,8 @@
-import numpy as np
 import sklearn.model_selection
+import numpy as np
 import torch
 import torchvision
 from cemcd.data.base import Datasets
-from cemcd.data import transforms
 
 x_train = []
 y_train = []
@@ -80,16 +79,13 @@ class MNISTDatasets(Datasets):
             getter.length = len(samples)
             return getter
 
-        train_img_transform = None
-        val_test_img_transform = None
-
         super().__init__(
             train_getter=data_getter(self.train_samples, self.train_labels),
             val_getter=data_getter(self.val_samples, self.val_labels),
             test_getter=data_getter(self.test_samples, self.test_labels),
             foundation_model=foundation_model,
-            train_img_transform=train_img_transform,
-            val_test_img_transform=val_test_img_transform,
+            train_img_transform=None,
+            val_test_img_transform=None,
             cache_dir=cache_dir,
             model_dir=model_dir,
             device=device

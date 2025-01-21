@@ -1,16 +1,16 @@
 import argparse
 import os
+from pathlib import Path
+import wandb
+import yaml
+import numpy as np
+import torch
+from torchvision.models import resnet34
+import lightning
 from cemcd.training import train_cbm, train_cem, load_cem
 from cemcd.models.pre_concept_models import get_pre_concept_model
 from cemcd.data import awa, cub, dsprites, mnist
 import cemcd.concept_discovery
-import numpy as np
-import lightning
-import torch
-from torchvision.models import resnet34
-from pathlib import Path
-import wandb
-import yaml
 
 ALPHABET = [
     "ALPHA",
@@ -85,11 +85,15 @@ def get_accuracies(test_results, n_provided_concepts, model_name):
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-c', '--config', 
+        "-c", "--config", 
         type=str,
         required=True,
-        help="Path to the experiment config file."
-    )
+        help="Path to the experiment config file.")
+    parser.add_argument(
+        "-r", "--repeats",
+        type=int,
+        default=1,
+        help="Number of times to run the experiment.")
     return parser.parse_args()
 
 def load_config(config_file):
@@ -141,11 +145,14 @@ def load_datasets(config):
         return datasets
     raise ValueError(f"Unrecognised dataset: {config['dataset']}")
 
-def create_run_name(results_dir):
-    run_name = f"{np.random.choice(ALPHABET)}-{np.random.choice(ALPHABET)}"
-    while (Path(results_dir) / run_name).exists():
-        run_name = f"{np.random.choice(ALPHABET)}-{np.random.choice(ALPHABET)}"
-    return run_name
+def create_run_name(results_dir, dataset):
+    for word1 in ALPHABET:
+        for word2 in ALPHABET:
+            for word3 in ALPHABET:
+                run_name = f"{dataset}-{word1}-{word2}-{word3}"
+                if not (Path(results_dir) / run_name).exists():
+                    return run_name
+    raise RuntimeError("All run names have been used.")
 
 def make_pre_concept_model(config):
     if config["pre_concept_model"] == "cnn":
@@ -165,55 +172,71 @@ def make_concept_model(config, n_concepts):
 
     raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
 
-def get_intervention_accuracies(model, test_dl, concepts_to_intervene):
+def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_time):
     trainer = lightning.Trainer()
     intervention_accuracies = []
     model.intervention_mask = torch.tensor([0] * model.n_concepts)
     [test_results] = trainer.test(model, test_dl)
-    task_accuracy = round(test_results["test_y_accuracy"], 4)
-    intervention_accuracies.append(task_accuracy)
+    initial_task_accuracy = test_results["test_y_accuracy"]
     for c in concepts_to_intervene:
-        model.intervention_mask = torch.tensor([0] * model.n_concepts)
+        if one_at_a_time:
+            model.intervention_mask = torch.tensor([0] * model.n_concepts)
         model.intervention_mask[c] = 1
         [test_results] = trainer.test(model, test_dl)
-        task_accuracy = round(test_results["test_y_accuracy"], 4)
-        intervention_accuracies.append(task_accuracy)
+        accuracy_difference = round(test_results["test_y_accuracy"] - initial_task_accuracy, 4)
+        intervention_accuracies.append(accuracy_difference)
     return intervention_accuracies
 
 def test_concept_interventions(
         initial_models,
         models_with_discovered_concepts,
         datasets,
-        discovered_concept_aucs,
         discovered_concept_test_ground_truth):
-    
     results = {}
 
     for dataset, model in zip(datasets, initial_models):
         model_name = (dataset.foundation_model or 'basic') + "cem"
-        intervention_accuracies = get_intervention_accuracies(model, dataset.test_dl(), range(model.n_concepts))
-        results[f"initial_{model_name}_interventions"] = intervention_accuracies
+        intervention_accuracies_cumulative = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(),
+            concepts_to_intervene=range(model.n_concepts),
+            one_at_a_time=False)
+        intervention_accuracies_one_at_a_time = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(),
+            concepts_to_intervene=range(model.n_concepts),
+            one_at_a_time=True)
+        results[f"initial_{model_name}_interventions_cumulative"] = intervention_accuracies_cumulative
+        results[f"initial_{model_name}_interventions_one_at_a_time"] = intervention_accuracies_one_at_a_time
 
     n_provided_concepts = datasets[0].n_concepts
-    n_discovered_concepts = len(discovered_concept_aucs)
+    n_discovered_concepts = discovered_concept_test_ground_truth.shape[1]
     all_concepts = range(n_provided_concepts + n_discovered_concepts)
+    provided_concepts = range(n_provided_concepts)
     discovered_concepts = range(n_provided_concepts, n_provided_concepts + n_discovered_concepts)
-    best_discovered_concepts = []
-    for idx, auc in enumerate(discovered_concept_aucs):
-        if auc >= 0.9:
-            best_discovered_concepts.append(n_provided_concepts + idx)
-    provided_and_best_discovered_concepts = list(range(n_provided_concepts)) + best_discovered_concepts
 
     for dataset, model in zip(datasets, models_with_discovered_concepts):
         model_name = (dataset.foundation_model or 'basic') + "cem"
-        results[f"enhanced_{model_name}_all_concept_interventions"] = \
-            get_intervention_accuracies(model, dataset.test_dl(discovered_concept_test_ground_truth), all_concepts)
-        results[f"enhanced_{model_name}_discovered_concept_interventions"] = \
-            get_intervention_accuracies(model, dataset.test_dl(discovered_concept_test_ground_truth), discovered_concepts)
-        results[f"enhanced_{model_name}_best_discovered_concept_interventions"] = \
-            get_intervention_accuracies(model, dataset.test_dl(discovered_concept_test_ground_truth), best_discovered_concepts)
-        results[f"enhanced_{model_name}_provided_and_best_discovered_concept_interventions"] = \
-            get_intervention_accuracies(model, dataset.test_dl(discovered_concept_test_ground_truth), provided_and_best_discovered_concepts)
+        results[f"enhanced_{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=all_concepts,
+            one_at_a_time=False)
+        results[f"enhanced_{model_name}_discovered_concept_interventions_cumulative"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=discovered_concepts,
+            one_at_a_time=False)
+        results[f"enhanced_{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=provided_concepts,
+            one_at_a_time=True)
+        results[f"enhanced_{model_name}_discovered_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=discovered_concepts,
+            one_at_a_time=True)
 
     return results
 
@@ -245,8 +268,7 @@ def run_experiment(run_dir, config):
                 latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
                 train_dl=dataset.train_dl(),
                 test_dl=dataset.test_dl(),
-                path=load_path
-            )
+                path=load_path)
         else:
             model, test_results = train_cem(
                 n_concepts=dataset.n_concepts,
@@ -257,8 +279,7 @@ def run_experiment(run_dir, config):
                 val_dl=dataset.val_dl(),
                 test_dl=dataset.test_dl(),
                 save_path=run_dir / f"initial_{dataset.foundation_model or 'basic'}cem.pth",
-                max_epochs=config["max_epochs"]
-            )
+                max_epochs=config["max_epochs"])
         model_results = get_accuracies(test_results, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
         initial_models.append(model)
@@ -281,8 +302,7 @@ def run_experiment(run_dir, config):
             val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
             test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
             save_path=run_dir / f"enhanced_{dataset.foundation_model or 'basic'}cem.pth",
-            max_epochs=config["max_epochs"]
-        )
+            max_epochs=config["max_epochs"])
         model_results = get_accuracies(test_results, dataset.n_concepts, f"enhanced_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
         models_with_discovered_concepts.append(model)
@@ -291,7 +311,6 @@ def run_experiment(run_dir, config):
         initial_models=initial_models,
         models_with_discovered_concepts=models_with_discovered_concepts,
         datasets=datasets,
-        discovered_concept_aucs=discovered_concept_roc_aucs,
         discovered_concept_test_ground_truth=discovered_concept_test_ground_truth)
     log(intervention_results)
 
@@ -306,17 +325,37 @@ def run_experiment(run_dir, config):
             val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
             test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
             save_path=run_dir / f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem.pth",
-            max_epochs=config["max_epochs"]
-        )
+            max_epochs=config["max_epochs"])
         model_results = get_accuracies(test_results, dataset.n_concepts, f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
         models_with_perfect_discovered_concepts.append(model)
 
     int_baseline_results = {}
+    all_concepts = range(datasets[0].n_concepts + n_discovered_concepts)
+    provided_concepts = range(datasets[0].n_concepts)
+    discovered_concepts = range(datasets[0].n_concepts, datasets[0].n_concepts + n_discovered_concepts)
     for dataset, model in zip(datasets, models_with_perfect_discovered_concepts):
         model_name = (dataset.foundation_model or 'basic') + "cem"
-        intervention_accuracies = get_intervention_accuracies(model, dataset.test_dl(discovered_concept_test_ground_truth), range(dataset.n_concepts, dataset.n_concepts + n_discovered_concepts))
-        int_baseline_results[f"ground_truth_baseline_{model_name}_interventions"] = intervention_accuracies
+        int_baseline_results[f"ground_truth_baseline_{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=all_concepts,
+            one_at_a_time=False)
+        int_baseline_results[f"ground_truth_baseline_{model_name}_discovered_concept_interventions_cumulative"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=discovered_concepts,
+            one_at_a_time=False)
+        int_baseline_results[f"ground_truth_baseline_{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=provided_concepts,
+            one_at_a_time=True)
+        int_baseline_results[f"ground_truth_baseline_{model_name}_discovered_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+            model=model,
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            concepts_to_intervene=discovered_concepts,
+            one_at_a_time=True)
     log(int_baseline_results)
 
   
@@ -353,8 +392,7 @@ def run_experiment(run_dir, config):
     #     test_dl=datasets[0].test_dl(),
     #     black_box=True,
     #     save_path=run_dir / "black_box_baseline.pth",
-    #     max_epochs=config["max_epochs"]
-    # )
+    #     max_epochs=config["max_epochs"])
     # black_box_task_accuracy = round(black_box_test_results["test_y_accuracy"], 4)
     # log({"black_box_task_accuracy": black_box_task_accuracy})
 
@@ -362,24 +400,26 @@ if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")
     args = parse_arguments()
 
-    config = load_config(args.config)
-    run_name = create_run_name(config["results_dir"])
-    print(f"RUN NAME: {run_name}\n")
-    run_dir = Path(config["results_dir"]) / run_name
-    run_dir.mkdir()
-    (run_dir / "config.yaml").write_text(Path(args.config).read_text())
-    if config["use_wandb"]:
-        wandb.init(
-            project="cem-concept-discovery",
-            config=config,
-            name=run_name,
-            notes=config["description"],
-            id=run_name
-        )
-    run_experiment(
-        run_dir=run_dir,
-        config=config
-    )
+    repeats = args.repeats
+    print(f"Running {repeats} times.")
+    for _ in range(repeats):
+        config = load_config(args.config)
+        run_name = create_run_name(config["results_dir"], config["dataset"])
+        print(f"RUN NAME: {run_name}\n")
+        run_dir = Path(config["results_dir"]) / run_name
+        run_dir.mkdir()
+        (run_dir / "config.yaml").write_text(Path(args.config).read_text())
+        if config["use_wandb"]:
+            wandb.init(
+                project="cem-concept-discovery",
+                config=config,
+                name=run_name,
+                notes=config["description"],
+                id=run_name)
+        run_experiment(
+            run_dir=run_dir,
+            config=config)
 
-    if config["use_wandb"]:
-        wandb.save(os.path.join(run_dir, "*"))
+        if config["use_wandb"]:
+            wandb.save(os.path.join(run_dir, "*"))
+            wandb.finish()

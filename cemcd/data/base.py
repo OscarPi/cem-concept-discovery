@@ -1,10 +1,10 @@
-import torch
-from torch.utils.data import DataLoader, TensorDataset, Dataset
-from cemcd.data import transforms
 from pathlib import Path
 from tqdm import trange
-import clip
 import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset, Dataset
+import clip
+from cemcd.data import transforms
 
 class CEMDataset(Dataset):
     def __init__(self, data_getter, transform=None, additional_concepts=None):
@@ -16,29 +16,28 @@ class CEMDataset(Dataset):
         return self.data_getter.length
 
     def __getitem__(self, idx):
-        image, class_label, attr_label = self.data_getter(idx)
+        x, y, c = self.data_getter(idx)
 
         if self.transform:
-            image = self.transform(image)
+            x = self.transform(x)
 
         if self.additional_concepts is not None:
-            attr_label = torch.concat((attr_label, torch.from_numpy(self.additional_concepts[idx].astype(np.float32))))
+            c = torch.concat((c, torch.from_numpy(self.additional_concepts[idx].astype(np.float32))))
 
-        return image, class_label, attr_label
+        return x, y, c
 
 class Datasets:
     def __init__(
-        self,
-        train_getter,
-        val_getter,
-        test_getter,
-        foundation_model=None,
-        train_img_transform=None,
-        val_test_img_transform=None,
-        cache_dir=None,
-        model_dir="/checkpoints",
-        device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    ):
+            self,
+            train_getter,
+            val_getter,
+            test_getter,
+            foundation_model=None,
+            train_img_transform=None,
+            val_test_img_transform=None,
+            cache_dir=None,
+            model_dir="/checkpoints",
+            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         self.foundation_model = foundation_model
         self.train_getter = train_getter
         self.val_getter = val_getter

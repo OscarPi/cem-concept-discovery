@@ -2,13 +2,13 @@
 As with other files in the repository, based on code from https://github.com/mateoespinosa/cem
 Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
 """
-import torch
-import pickle
-import numpy as np
-from  cemcd.data import transforms
-from PIL import Image
 from collections import defaultdict
 from pathlib import Path
+import pickle
+import numpy as np
+import torch
+from PIL import Image
+from cemcd.data import transforms
 from cemcd.data.base import Datasets
 
 ########################################################
@@ -224,6 +224,7 @@ CLASS_NAMES = [
     "Winter_Wren",
     "Common_Yellowthroat",
 ]
+
 # Set of CUB attributes selected by original CBM paper
 SELECTED_CONCEPTS = [
     1,
@@ -694,7 +695,7 @@ def compress_colour_concepts(concepts):
                 elif colour in dark_colours:
                     dark[group] = True
                 else:
-                    raise RuntimeError(f"unrecognised colour: {colour}")
+                    raise RuntimeError(f"Unrecognised colour: {colour}")
 
     for group in CONCEPT_GROUPS:
         if light[group]:

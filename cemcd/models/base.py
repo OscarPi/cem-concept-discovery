@@ -1,6 +1,6 @@
-import lightning
-import torch
 import numpy as np
+import torch
+import lightning
 from cemcd.metrics import calculate_concept_accuracies, calculate_task_accuracy
 
 class BaseModel(lightning.LightningModule):
@@ -77,7 +77,7 @@ class BaseModel(lightning.LightningModule):
             self.log(f"concept_{i+1}_auc", auc)
         return {
             "loss": loss,
-            "log": {**result, "loss":float(loss)}
+            "log": {**result, "loss": float(loss)}
         }
 
     def validation_step(self, batch, batch_idx):

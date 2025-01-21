@@ -2,12 +2,12 @@
 As with other files in the repository, based on code from https://github.com/mateoespinosa/cem
 Which was adapted from: https://github.com/yewsiang/ConceptBottleneck/blob/master/CUB/cub_loader.py
 """
-import torch
-import pickle
-from cemcd.data import transforms
-from PIL import Image
-import numpy as np
 from pathlib import Path
+import pickle
+import numpy as np
+import torch
+from PIL import Image
+from cemcd.data import transforms
 from cemcd.data.base import Datasets
 
 ########################################################
@@ -115,9 +115,6 @@ SELECTED_CONCEPT_SEMANTICS = [
     "quadrapedal"
 ]
 
-# Classes we use in our experiments
-#SELECTED_CLASSES = [41, 5, 45, 6, 12, 28, 1, 48, 43, 30]
-
 class AwADatasets(Datasets):
     def __init__(
             self,
@@ -127,11 +124,11 @@ class AwADatasets(Datasets):
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         dataset_dir = Path(dataset_dir)
-        with (dataset_dir / "AwA2" / "train.pickle").open("rb") as f:
+        with (dataset_dir / "AwA2" / "train.pkl").open("rb") as f:
             train_data = pickle.load(f)
-        with (dataset_dir / "AwA2" / "val.pickle").open("rb") as f:
+        with (dataset_dir / "AwA2" / "val.pkl").open("rb") as f:
             val_data = pickle.load(f)
-        with (dataset_dir / "AwA2" / "test.pickle").open("rb") as f:
+        with (dataset_dir / "AwA2" / "test.pkl").open("rb") as f:
             test_data = pickle.load(f)
 
         def data_getter(data):

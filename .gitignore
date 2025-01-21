@@ -26,3 +26,4 @@
 /.idea
 **/__pycache__
 /wandb
+/cache
