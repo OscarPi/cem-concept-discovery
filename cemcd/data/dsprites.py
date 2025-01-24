@@ -1,27 +1,17 @@
+from pathlib import Path
 import numpy as np
 import torch
-from pathlib import Path
+import torchvision
+from cemcd.data.base import Datasets
 
-class DSpritesDataset(torch.utils.data.Dataset):
-    def __init__(self, imgs, imgs_start, imgs_end, permutation, concepts, labels):
-        self.imgs = imgs
-        self.imgs_start = imgs_start
-        self.imgs_end = imgs_end
-        self.permutation = permutation
-        self.concepts = concepts
-        self.labels = labels
-
-    def __len__(self):
-        return self.imgs_end - self.imgs_start
-
-    def __getitem__(self, idx):
-        img_idx = self.permutation[idx + self.imgs_start]
-        x = torch.tensor(self.imgs[img_idx][None, :]) / 255.0
-
-        return x, self.labels[idx], self.concepts[idx]
-
-class DSpritesDatasets:
-    def __init__(self, dataset_dir):
+class DspritesDatasets(Datasets):
+    def __init__(
+            self,
+            foundation_model=None,
+            dataset_dir="/datasets",
+            cache_dir=None,
+            model_dir="/checkpoints",
+            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         dataset_zip = np.load(Path(dataset_dir) / "dSprites" / "dsprites_ndarray_co1sh3sc6or40x32y32_64x64.npz")
 
         latents = dataset_zip["latents_classes"]
@@ -55,7 +45,62 @@ class DSpritesDatasets:
         self.shape_test = torch.tensor(shape[self.test_start:])
         self.scale_test = torch.tensor(scale[self.test_start:])
 
-        self.concept_bank = np.stack((
+        def data_getter(split):
+            if split == "train":
+                concepts = []
+                concepts.append(self.quadrant_train > 1)
+                concepts.append(self.shape_train == 0)
+                concepts.append(self.scale_train > 2)
+                c = torch.stack(concepts, dim=1).float()
+                y = self.quadrant_train + self.shape_train + self.scale_train
+                imgs_start = 0
+                imgs_end = self.val_start
+            elif split == "val":
+                concepts = []
+                concepts.append(self.quadrant_val > 1)
+                concepts.append(self.shape_val == 0)
+                concepts.append(self.scale_val > 2)
+                c = torch.stack(concepts, dim=1).float()
+                y = self.quadrant_val + self.shape_val + self.scale_val
+                imgs_start = self.val_start
+                imgs_end = self.test_start
+            elif split == "test":
+                concepts = []
+                concepts.append(self.quadrant_test > 1)
+                concepts.append(self.shape_test == 0)
+                concepts.append(self.scale_test > 2)
+                c = torch.stack(concepts, dim=1).float()
+                y = self.quadrant_test + self.shape_test + self.scale_test
+                imgs_start = self.test_start
+                imgs_end = self.length
+            else:
+                raise ValueError(f"Invalid split: {split}")
+            transform = torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
+
+            def getter(idx):
+                img_idx = self.permutation[idx + imgs_start]
+                img = self.imgs[img_idx]
+                img = np.repeat(img[np.newaxis, ...], 3, axis=0)
+                img = transform(img)
+
+                return img, y[idx], c[idx]
+
+            getter.length = imgs_end - imgs_start
+            return getter
+
+        super().__init__(
+            train_getter=data_getter("train"),
+            val_getter=data_getter("val"),
+            test_getter=data_getter("test"),
+            foundation_model=foundation_model,
+            train_img_transform=None,
+            val_test_img_transform=None,
+            cache_dir=cache_dir,
+            model_dir=model_dir,
+            device=device
+        )
+
+        train_concepts = np.stack((
             self.scale_train == 0,
             self.scale_train == 1,
             self.scale_train == 2,
@@ -70,7 +115,9 @@ class DSpritesDatasets:
             self.quadrant_train == 2,
             self.quadrant_train == 3
         ), axis=1)
-        self.concept_test_ground_truth = np.stack((
+        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
+
+        test_concepts = np.stack((
             self.scale_test == 0,
             self.scale_test == 1,
             self.scale_test == 2,
@@ -85,7 +132,9 @@ class DSpritesDatasets:
             self.quadrant_test == 2,
             self.quadrant_test == 3
         ), axis=1)
-        self.concept_names = [
+        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
+
+        names = [
             "Scale 0",
             "Scale 1",
             "Scale 2",
@@ -100,55 +149,7 @@ class DSpritesDatasets:
             "Quadrant 2",
             "Quadrant 3"
         ]
+        self.concept_names = names + list(map(lambda s: "NOT " + s, names))
 
         self.n_concepts = 3
         self.n_tasks = 11
-
-    def train_dl(self, additional_concepts=None):
-        concepts = []
-        concepts.append(self.quadrant_train > 1)
-        concepts.append(self.shape_train == 0)
-        concepts.append(self.scale_train > 2)
-        
-        c = torch.stack(concepts, dim=1).float()
-        if additional_concepts is not None:
-            c = torch.cat((c, torch.FloatTensor(additional_concepts)), dim=1)
-
-        y = self.quadrant_train + self.shape_train + self.scale_train
-
-        dataset = DSpritesDataset(self.imgs, 0, self.val_start, self.permutation, c, y)
-
-        return torch.utils.data.DataLoader(dataset, batch_size=256, num_workers=7)
-
-
-    def val_dl(self, additional_concepts=None):
-        concepts = []
-        concepts.append(self.quadrant_val > 1)
-        concepts.append(self.shape_val == 0)
-        concepts.append(self.scale_val > 2)
-        
-        c = torch.stack(concepts, dim=1).float()
-        if additional_concepts is not None:
-            c = torch.cat((c, torch.FloatTensor(additional_concepts)), dim=1)
-
-        y = self.quadrant_val + self.shape_val + self.scale_val
-
-        dataset = DSpritesDataset(self.imgs, self.val_start, self.test_start, self.permutation, c, y)
-
-        return torch.utils.data.DataLoader(dataset, batch_size=256, num_workers=7)
-
-    def test_dl(self, additional_concepts=None):
-        concepts = []
-        concepts.append(self.quadrant_test > 1)
-        concepts.append(self.shape_test == 0)
-        concepts.append(self.scale_test > 2)
-        
-        c = torch.stack(concepts, dim=1).float()
-        if additional_concepts is not None:
-            c = torch.cat((c, torch.FloatTensor(additional_concepts)), dim=1)
-
-        y = self.quadrant_test + self.shape_test + self.scale_test
-
-        dataset = DSpritesDataset(self.imgs, self.test_start, self.length, self.permutation, c, y)
-    
-        return torch.utils.data.DataLoader(dataset, batch_size=256, num_workers=7)
