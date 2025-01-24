@@ -1,7 +1,17 @@
+import argparse
 from pathlib import Path
 import torch
 from cemcd.training import train_cem
-from run_experiment import parse_arguments, load_config, load_datasets, make_pre_concept_model
+from experiment_utils import load_config, load_datasets, make_pre_concept_model
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-c", "--config", 
+        type=str,
+        required=True,
+        help="Path to the experiment config file.")
+    return parser.parse_args()
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")

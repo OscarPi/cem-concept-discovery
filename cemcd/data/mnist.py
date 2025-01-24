@@ -1,8 +1,12 @@
+from pathlib import Path
+from tqdm import trange
 import sklearn.model_selection
 import numpy as np
 import torch
 import torchvision
+import clip
 from cemcd.data.base import Datasets
+from cemcd.data import transforms
 
 x_train = []
 y_train = []
@@ -45,9 +49,9 @@ def create_addition_set(x, y, n_digits, selected_digits, dataset_size):
         digit_labels = []
         for _ in range(n_digits):
             idx = np.random.choice(x.shape[0])
-            digits.append(x[idx])
+            digits.append(np.expand_dims(x[idx], axis=2))
             digit_labels.append(y[idx])
-        samples.append(np.repeat(np.concatenate(digits, axis=1)[..., np.newaxis], 3, axis=2))
+        samples.append(np.concatenate(digits, axis=2))
         labels.append(np.array(digit_labels))
     return np.array(samples), np.array(labels)
 
@@ -71,11 +75,10 @@ class MNISTDatasets(Datasets):
 
         def data_getter(samples, labels):
             def getter(idx):
-                transform = torchvision.transforms.Compose([
-                    torchvision.transforms.ToTensor(),
-                    torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
-                ])
-                return transform(samples[idx]), np.sum(labels[idx]), torch.FloatTensor(labels[idx] > (max_digit / 2))
+                return (
+                    torchvision.transforms.ToTensor()(samples[idx]),
+                    np.sum(labels[idx]),
+                    torch.FloatTensor(labels[idx] > (max_digit / 2)))
             getter.length = len(samples)
             return getter
 
@@ -108,3 +111,52 @@ class MNISTDatasets(Datasets):
 
         self.n_concepts = n_digits
         self.n_tasks = max_digit * n_digits + 1
+
+        if foundation_model == "dinov2":
+            self.latent_representation_size = n_digits * 1536
+        elif foundation_model == "clip":
+            self.latent_representation_size = n_digits * 768
+        else:
+            self.latent_representation_size = None
+
+    def run_foundation_model(self, img_transform, model_dir, data_getter, device):
+        if self.foundation_model == "dinov2":
+            torch.hub.set_dir(Path(model_dir) / "dinov2")
+            model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14').to(device)
+            model.eval()
+            transform = transforms.default_transforms
+        elif self.foundation_model == "clip":
+            ckpt_dir = Path(model_dir) / "clip"
+            model, transform = clip.load("ViT-L/14", device=device, download_root=ckpt_dir)
+            model.eval()
+            model = model.encode_image
+            transform.transforms[2] = transforms._convert_image_to_rgb
+            transform.transforms[3] = transforms._safe_to_tensor
+        else:
+            raise ValueError(f"Unrecognised foundation model: {model}.")
+
+        if img_transform is not None:
+            transform = img_transform
+
+        pre_transform = torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
+
+        xs = []
+        ys = []
+        cs = []
+        with torch.no_grad():
+            for i in trange(data_getter.length):
+                imgs, y, c = data_getter(i)
+
+                x_full = []
+                for j in range(imgs.shape[0]):
+                    img = imgs[j]
+                    img = np.repeat(img[np.newaxis, ...], 3, axis=0)
+                    img = transform(pre_transform(img))
+                    img = img[np.newaxis, ...].to(device)
+                    x = model(img).detach().cpu().squeeze().float()
+                    x_full.append(x)
+
+                xs.append(torch.concatenate(x_full))
+                ys.append(y)
+                cs.append(c)
+        return torch.stack(xs), torch.tensor(ys), torch.stack(cs)

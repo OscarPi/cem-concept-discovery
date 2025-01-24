@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-def run_turtle(Zs, k, warm_start=False, gamma=10.):
+def run_turtle(Zs, k, warm_start=False, gamma=10., epochs=6000):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     n_tr = Zs[0].shape[0]
     feature_dims = [Z.shape[1] for Z in Zs]
@@ -34,7 +34,7 @@ def run_turtle(Zs, k, warm_start=False, gamma=10.):
     W_in, inner_opt = init_inner()
 
     # start training
-    iters_bar = trange(6000, leave=False)
+    iters_bar = trange(epochs, leave=False)
     for _ in iters_bar:
         optimizer.zero_grad()
         # load batch of data

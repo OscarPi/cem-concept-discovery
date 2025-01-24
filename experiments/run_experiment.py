@@ -5,12 +5,10 @@ import wandb
 import yaml
 import numpy as np
 import torch
-from torchvision.models import resnet34
 import lightning
-from cemcd.training import train_cbm, train_cem, load_cem
-from cemcd.models.pre_concept_models import get_pre_concept_model
-from cemcd.data import awa, cub, dsprites, mnist
+from cemcd.training import train_cem
 import cemcd.concept_discovery
+from experiment_utils import load_config, load_datasets, make_pre_concept_model, get_inital_models
 
 ALPHABET = [
     "ALPHA",
@@ -96,55 +94,6 @@ def parse_arguments():
         help="Number of times to run the experiment.")
     return parser.parse_args()
 
-def load_config(config_file):
-    with open(config_file, "r") as f:
-        return yaml.safe_load(f)
-
-def load_datasets(config):
-    if config["dataset"] == "mnist_add":
-        mnist_config = config["mnist_config"]
-        datasets = [mnist.MNISTDatasets(
-            n_digits=mnist_config["n_digits"],
-            max_digit=mnist_config["max_digit"],
-            dataset_dir=config["dataset_dir"],
-        )]
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(mnist.MNISTDatasets(
-                n_digits=mnist_config["n_digits"],
-                max_digit=mnist_config["max_digit"],
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
-                model_dir=config["model_dir"],
-            ))
-        return datasets
-    elif config["dataset"] == "dsprites":
-        return dsprites.DSpritesDatasets()
-    elif config["dataset"] == "cub":
-        datasets = [cub.CUBDatasets(dataset_dir=config["dataset_dir"])]
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(cub.CUBDatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
-                model_dir=config["model_dir"],
-            ))
-        return datasets
-    elif config["dataset"] == "awa":
-        datasets = [awa.AwADatasets(dataset_dir=config["dataset_dir"])]
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(awa.AwADatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
-                model_dir=config["model_dir"],
-            ))
-        return datasets
-    raise ValueError(f"Unrecognised dataset: {config['dataset']}")
-
 def create_run_name(results_dir, dataset):
     for word1 in ALPHABET:
         for word2 in ALPHABET:
@@ -153,24 +102,6 @@ def create_run_name(results_dir, dataset):
                 if not (Path(results_dir) / run_name).exists():
                     return run_name
     raise RuntimeError("All run names have been used.")
-
-def make_pre_concept_model(config):
-    if config["pre_concept_model"] == "cnn":
-        cnn_config = config["pre_concept_cnn_config"]
-        return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"])
-    elif config["pre_concept_model"] == "resnet34":
-        return resnet34(pretrained=True)
-
-    raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
-
-def make_concept_model(config, n_concepts):
-    if config["pre_concept_model"] == "cnn":
-        cnn_config = config["pre_concept_cnn_config"]
-        return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"], n_concepts)
-    elif config["pre_concept_model"] == "resnet34":
-        return torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, n_concepts))
-
-    raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
 
 def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_time):
     trainer = lightning.Trainer()
@@ -255,40 +186,18 @@ def run_experiment(run_dir, config):
 
     pre_concept_model = make_pre_concept_model(config)
 
-    initial_models = []
+    initial_models, test_results = get_inital_models(config, datasets, run_dir)
 
-    for dataset in datasets:
-        if config.get("cache_dir", None) is not None:
-            load_path = Path(config["cache_dir"]) / f"initial_{dataset.foundation_model or 'basic'}cem.pth"
-            print(f"Loading model from {load_path}.")
-            model, test_results = load_cem(
-                n_concepts=dataset.n_concepts,
-                n_tasks=dataset.n_tasks,
-                pre_concept_model=pre_concept_model if dataset.foundation_model is None else None,
-                latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
-                train_dl=dataset.train_dl(),
-                test_dl=dataset.test_dl(),
-                path=load_path)
-        else:
-            model, test_results = train_cem(
-                n_concepts=dataset.n_concepts,
-                n_tasks=dataset.n_tasks,
-                pre_concept_model=pre_concept_model if dataset.foundation_model is None else None,
-                latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
-                train_dl=dataset.train_dl(),
-                val_dl=dataset.val_dl(),
-                test_dl=dataset.test_dl(),
-                save_path=run_dir / f"initial_{dataset.foundation_model or 'basic'}cem.pth",
-                max_epochs=config["max_epochs"])
-        model_results = get_accuracies(test_results, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
+    for test_result in test_results:
+        model_results = get_accuracies(test_result, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
         initial_models.append(model)
 
     discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs = cemcd.concept_discovery.discover_concepts(
         config=config,
         save_path=run_dir,
-        initial_models=initial_models[1:],
-        datasets=datasets[1:])
+        initial_models=initial_models,
+        datasets=datasets)
     n_discovered_concepts = len(discovered_concept_roc_aucs)
 
     models_with_discovered_concepts = []
@@ -414,8 +323,7 @@ if __name__ == "__main__":
                 project="cem-concept-discovery",
                 config=config,
                 name=run_name,
-                notes=config["description"],
-                id=run_name)
+                notes=config["description"])
         run_experiment(
             run_dir=run_dir,
             config=config)

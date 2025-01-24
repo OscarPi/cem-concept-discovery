@@ -77,7 +77,7 @@ def discover_concepts(config, save_path, initial_models, datasets):
                 Zs.append(e[:, concept_idx][sample_filter])
 
             cluster_labels, _ = turtle.run_turtle(
-                Zs=Zs, k=config["n_clusters"], warm_start=config["warm_start"])
+                Zs=Zs, k=config["n_clusters"], warm_start=config["warm_start"], epochs=config["turtle_epochs"])
             clusters = np.unique(cluster_labels)
 
             for cluster in clusters:
@@ -86,7 +86,7 @@ def discover_concepts(config, save_path, initial_models, datasets):
 
                 if np.sum(labels == 1) < config["minimum_cluster_size"] * train_dataset_size or np.sum(labels == 0) < config["minimum_cluster_size"] * train_dataset_size:
                     continue
-                
+
                 roc_auc, matching_concept_idx = match_to_concept_bank(labels, datasets[0])
 
                 if roc_auc < config["match_threshold"]:
