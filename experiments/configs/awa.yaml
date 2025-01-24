@@ -3,13 +3,14 @@ dataset: awa
 dataset_dir: /datasets
 model_dir: /checkpoints
 pre_concept_model: resnet34
-max_epochs: 500
-n_clusters: 25
+max_epochs: 300
+n_clusters: 22
 foundation_models:
   - dinov2
 minimum_cluster_size: 0.01
 results_dir: results/
 use_wandb: True
-max_concepts_to_discover: 20
-match_threshold: 0.65
+max_concepts_to_discover: 50
+match_threshold: 0
 warm_start: True
+turtle_epochs: 6000

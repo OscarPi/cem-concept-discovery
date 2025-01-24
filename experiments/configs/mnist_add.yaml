@@ -17,7 +17,7 @@ foundation_models:
 minimum_cluster_size: 0.01
 results_dir: /homes/ogh22/results/
 use_wandb: True
-max_concepts_to_discover: 20
+max_concepts_to_discover: 50
 match_threshold: 0
 warm_start: True
 turtle_epochs: 6000

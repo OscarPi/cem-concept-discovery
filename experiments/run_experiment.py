@@ -8,7 +8,7 @@ import torch
 import lightning
 from cemcd.training import train_cem
 import cemcd.concept_discovery
-from experiment_utils import load_config, load_datasets, make_pre_concept_model, get_inital_models
+from experiment_utils import load_config, load_datasets, make_pre_concept_model, get_initial_models
 
 ALPHABET = [
     "ALPHA",
@@ -186,12 +186,11 @@ def run_experiment(run_dir, config):
 
     pre_concept_model = make_pre_concept_model(config)
 
-    initial_models, test_results = get_inital_models(config, datasets, run_dir)
+    initial_models, test_results = get_initial_models(config, datasets, run_dir)
 
-    for test_result in test_results:
+    for dataset, test_result in zip(datasets, test_results):
         model_results = get_accuracies(test_result, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
-        initial_models.append(model)
 
     discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs = cemcd.concept_discovery.discover_concepts(
         config=config,

@@ -6,7 +6,7 @@ import sklearn.metrics
 import numpy as np
 import torch
 from cemcd.concept_discovery import calculate_embeddings
-from experiment_utils import load_config, load_datasets, get_inital_models
+from experiment_utils import load_config, load_datasets, get_initial_models
 from cemcd import turtle
 
 def parse_arguments():
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     config = load_config(args.config)
     datasets = load_datasets(config)
 
-    models, _ = get_inital_models(config, datasets, run_dir=None)
+    models, _ = get_initial_models(config, datasets, run_dir=None)
 
     predictions = []
     embeddings = []

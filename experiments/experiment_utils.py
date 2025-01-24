@@ -66,7 +66,7 @@ def make_concept_model(config, n_concepts):
 
     raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
 
-def get_inital_models(config, datasets, run_dir):
+def get_initial_models(config, datasets, run_dir):
     models = []
     test_results = []
     for dataset in datasets:
