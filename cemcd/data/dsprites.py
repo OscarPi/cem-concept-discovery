@@ -4,7 +4,7 @@ import torch
 import torchvision
 from cemcd.data.base import Datasets
 
-class DspritesDatasets(Datasets):
+class DSpritesDatasets(Datasets):
     def __init__(
             self,
             foundation_model=None,
@@ -17,81 +17,75 @@ class DspritesDatasets(Datasets):
         latents = dataset_zip["latents_classes"]
         no_rotation = latents[:, 3].squeeze() == 0
 
-        self.imgs = dataset_zip["imgs"][no_rotation]
+        imgs = dataset_zip["imgs"][no_rotation]
 
-        l = len(self.imgs)
+        length = len(imgs)
         generator = np.random.default_rng(42)
-        self.permutation = generator.permutation(l)
+        permutation = generator.permutation(length)
+        imgs = imgs[permutation]
 
-        self.val_start = int(0.6*l)
-        self.test_start = int(0.75*l)
-        self.length = l
+        val_start = int(0.6*length)
+        test_start = int(0.75*length)
 
-        latents = latents[no_rotation][self.permutation]
+        latents = latents[no_rotation][permutation]
         loc = latents[:, (False, False, False, False, True, True)] > 15
         quadrant = loc[:, 0] * 2 + loc[:, 1]
         shape = latents[:, (False, True, False, False, False, False)].squeeze()
         scale = latents[:, (False, False, True, False, False, False)].squeeze()
 
-        self.quadrant_train = torch.tensor(quadrant[:self.val_start])
-        self.shape_train = torch.tensor(shape[:self.val_start])
-        self.scale_train = torch.tensor(scale[:self.val_start])
 
-        self.quadrant_val = torch.tensor(quadrant[self.val_start:self.test_start])
-        self.shape_val = torch.tensor(shape[self.val_start:self.test_start])
-        self.scale_val = torch.tensor(scale[self.val_start:self.test_start])
+        imgs_train = imgs[:val_start]
+        quadrant_train = torch.tensor(quadrant[:val_start])
+        shape_train = torch.tensor(shape[:val_start])
+        scale_train = torch.tensor(scale[:val_start])
+        c_train = torch.stack((
+            quadrant_train > 1,
+            shape_train == 0,
+            scale_train > 2
+        ), dim=1).float()
+        y_train = quadrant_train + shape_train + scale_train
 
-        self.quadrant_test = torch.tensor(quadrant[self.test_start:])
-        self.shape_test = torch.tensor(shape[self.test_start:])
-        self.scale_test = torch.tensor(scale[self.test_start:])
+        imgs_val = imgs[val_start:test_start]
+        quadrant_val = torch.tensor(quadrant[val_start:test_start])
+        shape_val = torch.tensor(shape[val_start:test_start])
+        scale_val = torch.tensor(scale[val_start:test_start])
+        c_val = torch.stack((
+            quadrant_val > 1,
+            shape_val == 0,
+            scale_val > 2
+        ), dim=1).float()
+        y_val = quadrant_val + shape_val + scale_val
 
-        def data_getter(split):
-            if split == "train":
-                concepts = []
-                concepts.append(self.quadrant_train > 1)
-                concepts.append(self.shape_train == 0)
-                concepts.append(self.scale_train > 2)
-                c = torch.stack(concepts, dim=1).float()
-                y = self.quadrant_train + self.shape_train + self.scale_train
-                imgs_start = 0
-                imgs_end = self.val_start
-            elif split == "val":
-                concepts = []
-                concepts.append(self.quadrant_val > 1)
-                concepts.append(self.shape_val == 0)
-                concepts.append(self.scale_val > 2)
-                c = torch.stack(concepts, dim=1).float()
-                y = self.quadrant_val + self.shape_val + self.scale_val
-                imgs_start = self.val_start
-                imgs_end = self.test_start
-            elif split == "test":
-                concepts = []
-                concepts.append(self.quadrant_test > 1)
-                concepts.append(self.shape_test == 0)
-                concepts.append(self.scale_test > 2)
-                c = torch.stack(concepts, dim=1).float()
-                y = self.quadrant_test + self.shape_test + self.scale_test
-                imgs_start = self.test_start
-                imgs_end = self.length
-            else:
-                raise ValueError(f"Invalid split: {split}")
-            transform = torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
+        imgs_test = imgs[test_start:]
+        quadrant_test = torch.tensor(quadrant[test_start:])
+        shape_test = torch.tensor(shape[test_start:])
+        scale_test = torch.tensor(scale[test_start:])
+        c_test = torch.stack((
+            quadrant_test > 1,
+            shape_test == 0,
+            scale_test > 2
+        ), dim=1).float()
+        y_test = quadrant_test + shape_test + scale_test
 
+        transform = torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)])
+
+        def data_getter(imgs, y, c):
             def getter(idx):
-                img_idx = self.permutation[idx + imgs_start]
-                img = self.imgs[img_idx]
-                img = np.repeat(img[np.newaxis, ...], 3, axis=0)
+                img = imgs[idx]
+                img = np.repeat(img[..., np.newaxis], 3, axis=2)
                 img = transform(img)
 
                 return img, y[idx], c[idx]
 
-            getter.length = imgs_end - imgs_start
+            getter.length = len(imgs)
             return getter
 
         super().__init__(
-            train_getter=data_getter("train"),
-            val_getter=data_getter("val"),
-            test_getter=data_getter("test"),
+            train_getter=data_getter(imgs_train, y_train, c_train),
+            val_getter=data_getter(imgs_val, y_val, c_val),
+            test_getter=data_getter(imgs_test, y_test, c_test),
             foundation_model=foundation_model,
             train_img_transform=None,
             val_test_img_transform=None,
@@ -101,36 +95,36 @@ class DspritesDatasets(Datasets):
         )
 
         train_concepts = np.stack((
-            self.scale_train == 0,
-            self.scale_train == 1,
-            self.scale_train == 2,
-            self.scale_train == 3,
-            self.scale_train == 4,
-            self.scale_train == 5,
-            self.shape_train == 0,
-            self.shape_train == 1,
-            self.shape_train == 2,
-            self.quadrant_train == 0,
-            self.quadrant_train == 1,
-            self.quadrant_train == 2,
-            self.quadrant_train == 3
+            scale_train == 0,
+            scale_train == 1,
+            scale_train == 2,
+            scale_train == 3,
+            scale_train == 4,
+            scale_train == 5,
+            shape_train == 0,
+            shape_train == 1,
+            shape_train == 2,
+            quadrant_train == 0,
+            quadrant_train == 1,
+            quadrant_train == 2,
+            quadrant_train == 3
         ), axis=1)
         self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
 
         test_concepts = np.stack((
-            self.scale_test == 0,
-            self.scale_test == 1,
-            self.scale_test == 2,
-            self.scale_test == 3,
-            self.scale_test == 4,
-            self.scale_test == 5,
-            self.shape_test == 0,
-            self.shape_test == 1,
-            self.shape_test == 2,
-            self.quadrant_test == 0,
-            self.quadrant_test == 1,
-            self.quadrant_test == 2,
-            self.quadrant_test == 3
+            scale_test == 0,
+            scale_test == 1,
+            scale_test == 2,
+            scale_test == 3,
+            scale_test == 4,
+            scale_test == 5,
+            shape_test == 0,
+            shape_test == 1,
+            shape_test == 2,
+            quadrant_test == 0,
+            quadrant_test == 1,
+            quadrant_test == 2,
+            quadrant_test == 3
         ), axis=1)
         self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
 

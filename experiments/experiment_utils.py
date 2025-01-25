@@ -3,7 +3,7 @@ import yaml
 import torch
 from torchvision.models import resnet34
 from cemcd.models.pre_concept_models import get_pre_concept_model
-from cemcd.data import awa, cub, dsprites, mnist
+from cemcd.data import awa, cub, dsprites, mnist, celeba
 from cemcd.training import train_cem, load_cem
 
 def load_config(config_file):
@@ -25,7 +25,15 @@ def load_datasets(config):
                 model_dir=config["model_dir"]))
         return datasets
     elif config["dataset"] == "dsprites":
-        return dsprites.DSpritesDatasets()
+        datasets = []
+        for foundation_model in config["foundation_models"]:
+            print(f"Running foundation model {foundation_model}.")
+            datasets.append(dsprites.DSpritesDatasets(
+                foundation_model=foundation_model,
+                dataset_dir=config["dataset_dir"],
+                cache_dir=config.get("cache_dir", None),
+                model_dir=config["model_dir"]))
+        return datasets
     elif config["dataset"] == "cub":
         datasets = []
         for foundation_model in config["foundation_models"]:
@@ -41,6 +49,16 @@ def load_datasets(config):
         for foundation_model in config["foundation_models"]:
             print(f"Running foundation model {foundation_model}.")
             datasets.append(awa.AwADatasets(
+                foundation_model=foundation_model,
+                dataset_dir=config["dataset_dir"],
+                cache_dir=config.get("cache_dir", None),
+                model_dir=config["model_dir"]))
+        return datasets
+    elif config["dataset"] == "celeba":
+        datasets = []
+        for foundation_model in config["foundation_models"]:
+            print(f"Running foundation model {foundation_model}.")
+            datasets.append(celeba.CELEBADatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
                 cache_dir=config.get("cache_dir", None),

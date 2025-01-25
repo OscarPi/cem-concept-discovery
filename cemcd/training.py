@@ -72,7 +72,7 @@ def train_cem(
             EarlyStopping(
                 monitor="val_loss",
                 min_delta=0.0,
-                patience=25,
+                patience=15,
                 verbose=False,
                 mode="min",
             ),

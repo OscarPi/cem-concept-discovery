@@ -117,7 +117,7 @@ class Datasets:
                 img, y, c = data_getter(i)
                 img = transform(img)
 
-                img = img[None, ...].to(device)
+                img = img[torch.newaxis, ...].to(device)
                 x = model(img).detach().cpu().squeeze().float()
 
                 xs.append(x)
@@ -135,14 +135,12 @@ class Datasets:
             dataset = CEMDataset(
                 data_getter=self.train_getter,
                 transform=self.train_img_transform,
-                additional_concepts=additional_concepts
-            )
+                additional_concepts=additional_concepts)
 
         return DataLoader(
             dataset,
             batch_size=256,
-            num_workers=7
-        )
+            num_workers=7)
 
     def val_dl(self, additional_concepts=None):
         if self.foundation_model is not None:
@@ -154,14 +152,12 @@ class Datasets:
             dataset = CEMDataset(
                 data_getter=self.val_getter,
                 transform=self.val_test_img_transform,
-                additional_concepts=additional_concepts
-            )
+                additional_concepts=additional_concepts)
 
         return DataLoader(
             dataset,
             batch_size=256,
-            num_workers=7
-        )
+            num_workers=7)
     
     def test_dl(self, additional_concepts=None):
         if self.foundation_model is not None:
@@ -173,11 +169,9 @@ class Datasets:
             dataset = CEMDataset(
                 data_getter=self.test_getter,
                 transform=self.val_test_img_transform,
-                additional_concepts=additional_concepts
-            )
+                additional_concepts=additional_concepts)
         
         return DataLoader(
                 dataset,
                 batch_size=256,
-                num_workers=7
-        )
+                num_workers=7)

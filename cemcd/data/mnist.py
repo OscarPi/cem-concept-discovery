@@ -150,9 +150,9 @@ class MNISTDatasets(Datasets):
                 x_full = []
                 for j in range(imgs.shape[0]):
                     img = imgs[j]
-                    img = np.repeat(img[np.newaxis, ...], 3, axis=0)
+                    img = torch.repeat_interleave(img[torch.newaxis, ...], 3, dim=0)
                     img = transform(pre_transform(img))
-                    img = img[np.newaxis, ...].to(device)
+                    img = img[torch.newaxis, ...].to(device)
                     x = model(img).detach().cpu().squeeze().float()
                     x_full.append(x)
 

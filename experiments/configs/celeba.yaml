@@ -1,17 +1,17 @@
-description: CUB run
-dataset: cub
-dataset_dir: /homes/ogh22/datasets
-model_dir: /homes/ogh22/checkpoints
+description: CelebA run
+dataset: celeba
+dataset_dir: /datasets
+model_dir: /checkpoints
 pre_concept_model: resnet34
 max_epochs: 300
 n_clusters: 0
 foundation_models:
   - dinov2
 minimum_cluster_size: 0.01
-results_dir: /homes/ogh22/results/
+results_dir: results/
 use_wandb: True
 max_concepts_to_discover: 20
 match_threshold: 0
 warm_start: True
 turtle_epochs: 6000
-cache_dir: /homes/ogh22/tmp/cub
+cache_dir: /cem-concept-discovery/tmp/celeba

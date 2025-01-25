@@ -72,12 +72,12 @@ def get_accuracies(test_results, n_provided_concepts, model_name):
         f"{model_name}_task_accuracy": float(task_accuracy),
         f"{model_name}_provided_concept_accuracy": float(provided_concept_accuracy),
         f"{model_name}_provided_concept_auc": float(provided_concept_auc),
-    }
+        f"{model_name}_provided_concept_aucs": list(map(lambda x: round(float(x), 4), provided_concept_aucs))}
     if len(discovered_concept_accuracies) > 0:
         results.update({
             f"{model_name}_discovered_concept_accuracy": float(discovered_concept_accuracy),
-            f"{model_name}_discovered_concept_auc": float(discovered_concept_auc)
-        })
+            f"{model_name}_discovered_concept_auc": float(discovered_concept_auc),
+            f"{model_name}_discovered_concept_aucs": list(map(lambda x: round(float(x), 4), discovered_concept_aucs))})
     return results
 
 def parse_arguments():

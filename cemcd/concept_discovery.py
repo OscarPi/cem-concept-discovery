@@ -4,6 +4,7 @@ import wandb
 from tqdm import trange
 import sklearn.metrics
 import numpy as np
+import torch
 import lightning
 import cemcd.turtle as turtle
 
@@ -25,6 +26,40 @@ def calculate_embeddings(model, dl):
         axis=0)
 
     return c_pred, c_embs, y_pred
+
+def fill_in_discovered_concept_labels(datasets, labels, max_epochs):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    xs = datasets[0].train_x
+    for dataset in datasets[1:]:
+        xs = torch.concat((xs, dataset.train_x), dim=1)
+    non_nan_xs = xs[np.logical_not(np.isnan(labels))]
+    dataloader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(
+            non_nan_xs,
+            torch.from_numpy(labels[np.logical_not(np.isnan(labels))].astype(np.float32))),
+        batch_size=1024
+    )
+    model = torch.nn.Sequential(
+        torch.nn.Linear(non_nan_xs.shape[1], 1),
+        torch.nn.Sigmoid()
+    )
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999))
+    loss_fn = torch.nn.BCELoss()
+    
+    model.to(device)
+    model.train()
+    for _ in range(max_epochs):
+        for x, y in dataloader:
+            x, y = x.to(device), y.to(device)
+            pred = model(x)
+            loss = loss_fn(pred.squeeze(), y)
+            loss.backward()
+            optimiser.step()
+            optimiser.zero_grad()
+    model.eval()
+    with torch.no_grad():
+        full_labels = model(xs.to(device)).detach().cpu().numpy()
+    return full_labels.squeeze() > 0.5
 
 def match_to_concept_bank(labels, dataset):
     not_nan = np.logical_not(np.isnan(labels))
@@ -87,12 +122,20 @@ def discover_concepts(config, save_path, initial_models, datasets):
                 if np.sum(labels == 1) < config["minimum_cluster_size"] * train_dataset_size or np.sum(labels == 0) < config["minimum_cluster_size"] * train_dataset_size:
                     continue
 
+                labels = fill_in_discovered_concept_labels(datasets, labels, config["max_epochs"])
                 roc_auc, matching_concept_idx = match_to_concept_bank(labels, datasets[0])
 
                 if roc_auc < config["match_threshold"]:
                     did_not_match += 1
                     continue
-                if datasets[0].concept_names[matching_concept_idx] in discovered_concept_semantics:
+
+                discovered_concept_name = datasets[0].concept_names[matching_concept_idx]
+                if discovered_concept_name[:4] == "NOT ":
+                    not_discovered_concept_name = discovered_concept_name[4:]
+                else:
+                    not_discovered_concept_name = "NOT " + discovered_concept_name
+                if (discovered_concept_name in discovered_concept_semantics
+                    or not_discovered_concept_name in discovered_concept_semantics):
                     n_duplicates += 1
                     continue
 
@@ -105,7 +148,7 @@ def discover_concepts(config, save_path, initial_models, datasets):
                 discovered_concept_test_ground_truth = np.concatenate(
                     (discovered_concept_test_ground_truth, np.expand_dims(datasets[0].concept_test_ground_truth[:, matching_concept_idx], axis=1)),
                     axis=1)
-                discovered_concept_semantics.append(datasets[0].concept_names[matching_concept_idx])
+                discovered_concept_semantics.append(discovered_concept_name)
                 discovered_concept_roc_aucs.append(roc_auc)
                 n_discovered_concepts += 1
                 if n_discovered_concepts == config["max_concepts_to_discover"]:
