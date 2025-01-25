@@ -55,14 +55,22 @@ def train_cem(
         val_dl,
         test_dl,
         save_path=None,
-        max_epochs=300):
+        max_epochs=300,
+        use_task_class_weights=False,
+        use_concept_loss_weights=False):
+    task_class_weights = None
+    concept_loss_weights = None
+    if use_task_class_weights:
+        task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
+    if use_concept_loss_weights:
+        concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
         pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
-        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
-        concept_loss_weights=calculate_concept_loss_weights(n_concepts, train_dl)
+        task_class_weights=task_class_weights,
+        concept_loss_weights=concept_loss_weights
     )
 
     trainer = lightning.Trainer(
@@ -96,14 +104,22 @@ def load_cem(
         latent_representation_size,
         train_dl,
         test_dl,
-        path):
+        path,
+        use_task_class_weights=False,
+        use_concept_loss_weights=False):
+    task_class_weights = None
+    concept_loss_weights = None
+    if use_task_class_weights:
+        task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
+    if use_concept_loss_weights:
+        concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
         pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
-        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
-        concept_loss_weights=calculate_concept_loss_weights(n_concepts, train_dl)
+        task_class_weights=task_class_weights,
+        concept_loss_weights=concept_loss_weights
     )
 
     trainer = lightning.Trainer()
@@ -124,16 +140,21 @@ def train_cbm(
         test_dl,
         black_box=False,
         save_path=None,
-        max_epochs=300):
+        max_epochs=300,
+        use_task_class_weights=False,
+        use_concept_loss_weights=False):
+    task_class_weights = None
     concept_loss_weights = None
-    if not black_box:
+    if use_task_class_weights:
+        task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
+    if not black_box and use_concept_loss_weights:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
 
     model = ConceptBottleneckModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
         concept_model=concept_model,
-        task_class_weights=calculate_task_class_weights(n_tasks, train_dl),
+        task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights,
         black_box=black_box
     )

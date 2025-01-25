@@ -98,7 +98,9 @@ def get_initial_models(config, datasets, run_dir):
                 latent_representation_size=dataset.latent_representation_size,
                 train_dl=dataset.train_dl(),
                 test_dl=dataset.test_dl(),
-                path=load_path)
+                path=load_path,
+                use_task_class_weights=config["use_task_class_weights"],
+                use_concept_loss_weights=config["use_concept_loss_weights"])
         else:
             if run_dir is None:
                 save_path = None
@@ -113,7 +115,9 @@ def get_initial_models(config, datasets, run_dir):
                 val_dl=dataset.val_dl(),
                 test_dl=dataset.test_dl(),
                 save_path=save_path,
-                max_epochs=config["max_epochs"])
+                max_epochs=config["max_epochs"],
+                use_task_class_weights=config["use_task_class_weights"],
+                use_concept_loss_weights=config["use_concept_loss_weights"])
         models.append(model)
         test_results.append(test_result)
     return models, test_results

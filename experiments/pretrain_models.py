@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
     cache_dir = Path(config["cache_dir"])
-    cache_dir.mkdir()
+#    cache_dir.mkdir()
 
     datasets = load_datasets(config)
 
@@ -35,5 +35,6 @@ if __name__ == "__main__":
             val_dl=dataset.val_dl(),
             test_dl=dataset.test_dl(),
             save_path=cache_dir / f"initial_{dataset.foundation_model or 'basic'}cem.pth",
-            max_epochs=config["max_epochs"]
-        )
+            max_epochs=config["max_epochs"],
+            use_task_class_weights=config["use_task_class_weights"],
+            use_concept_loss_weights=config["use_concept_loss_weights"])

@@ -171,16 +171,16 @@ def load_celeba(dataset_dir):
         target_type=["identity", "attr"])
     n_tasks = len(label_remap)
 
-    # # And subsample to reduce its massive size
-    # factor = 12
-    # if factor != 1:
-    #     train_idxs = np.random.default_rng(seed=42).choice(
-    #         np.arange(0, len(celeba_train_data)),
-    #         replace=False,
-    #         size=len(celeba_train_data)//factor)
-    #     celeba_train_data = torch.utils.data.Subset(
-    #         celeba_train_data,
-    #         train_idxs)
+    # And subsample to reduce its massive size
+    factor = 12
+    if factor != 1:
+        train_idxs = np.random.default_rng(seed=42).choice(
+            np.arange(0, len(celeba_train_data)),
+            replace=False,
+            size=len(celeba_train_data)//factor)
+        celeba_train_data = torch.utils.data.Subset(
+            celeba_train_data,
+            train_idxs)
    
     total_samples = len(celeba_train_data)
     train_samples = int(0.7 * total_samples)
