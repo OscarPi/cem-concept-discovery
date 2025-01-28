@@ -35,7 +35,7 @@ class Datasets:
             foundation_model=None,
             train_img_transform=None,
             val_test_img_transform=None,
-            cache_dir=None,
+            dataset_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         self.foundation_model = foundation_model
@@ -46,8 +46,8 @@ class Datasets:
         self.val_test_img_transform = val_test_img_transform
 
         if self.foundation_model is not None:
-            if cache_dir is not None and (Path(cache_dir) / f"{self.foundation_model}.pt").exists():
-                cache_file = Path(cache_dir) / f"{self.foundation_model}.pt"
+            if (Path(dataset_dir) / f"{self.foundation_model}.pt").exists():
+                cache_file = Path(dataset_dir) / f"{self.foundation_model}.pt"
                 print(f"Loading representations from {cache_file}.")
                 data = torch.load(cache_file)
                 self.train_x = data["train_x"]
@@ -63,19 +63,18 @@ class Datasets:
                 self.train_x, self.train_y, self.train_c = self.run_foundation_model(train_img_transform, model_dir, train_getter, device)
                 self.val_x, self.val_y, self.val_c = self.run_foundation_model(val_test_img_transform, model_dir, val_getter, device)
                 self.test_x, self.test_y, self.test_c = self.run_foundation_model(val_test_img_transform, model_dir, test_getter, device)
-                if cache_dir is not None:
-                    data = {
-                        "train_x": self.train_x,
-                        "train_y": self.train_y,
-                        "train_c": self.train_c,
-                        "val_x": self.val_x,
-                        "val_y": self.val_y,
-                        "val_c": self.val_c,
-                        "test_x": self.test_x,
-                        "test_y": self.test_y,
-                        "test_c": self.test_c
-                    }
-                    torch.save(data, Path(cache_dir) / f"{self.foundation_model}.pt")
+                data = {
+                    "train_x": self.train_x,
+                    "train_y": self.train_y,
+                    "train_c": self.train_c,
+                    "val_x": self.val_x,
+                    "val_y": self.val_y,
+                    "val_c": self.val_c,
+                    "test_x": self.test_x,
+                    "test_y": self.test_y,
+                    "test_c": self.test_c
+                }
+                torch.save(data, Path(dataset_dir) / f"{self.foundation_model}.pt")
 
         self.n_concepts = None
         self.n_tasks = None

@@ -62,7 +62,6 @@ class MNISTDatasets(Datasets):
             max_digit,
             foundation_model=None,
             dataset_dir="/datasets",
-            cache_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         selected_digits = tuple(range(max_digit + 1))
@@ -82,6 +81,8 @@ class MNISTDatasets(Datasets):
             getter.length = len(samples)
             return getter
 
+        representation_cache_dir = Path(dataset_dir) / "MNIST" / f"{n_digits}-{max_digit}"
+        representation_cache_dir.mkdir(exist_ok=True)
         super().__init__(
             train_getter=data_getter(self.train_samples, self.train_labels),
             val_getter=data_getter(self.val_samples, self.val_labels),
@@ -89,7 +90,7 @@ class MNISTDatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=None,
             val_test_img_transform=None,
-            cache_dir=cache_dir,
+            dataset_dir=representation_cache_dir,
             model_dir=model_dir,
             device=device
         )

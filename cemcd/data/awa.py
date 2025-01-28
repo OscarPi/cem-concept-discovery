@@ -120,7 +120,6 @@ class AwADatasets(Datasets):
             self,
             foundation_model=None,
             dataset_dir="/datasets",
-            cache_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         dataset_dir = Path(dataset_dir)
@@ -157,7 +156,7 @@ class AwADatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=train_img_transform,
             val_test_img_transform=val_test_img_transform,
-            cache_dir=cache_dir,
+            dataset_dir=dataset_dir / "AwA2",
             model_dir=model_dir,
             device=device
         )

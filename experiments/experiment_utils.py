@@ -21,7 +21,6 @@ def load_datasets(config):
                 max_digit=mnist_config["max_digit"],
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
                 model_dir=config["model_dir"]))
         return datasets
     elif config["dataset"] == "dsprites":
@@ -31,7 +30,6 @@ def load_datasets(config):
             datasets.append(dsprites.DSpritesDatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
                 model_dir=config["model_dir"]))
         return datasets
     elif config["dataset"] == "cub":
@@ -41,7 +39,6 @@ def load_datasets(config):
             datasets.append(cub.CUBDatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
                 model_dir=config["model_dir"]))
         return datasets
     elif config["dataset"] == "awa":
@@ -51,7 +48,6 @@ def load_datasets(config):
             datasets.append(awa.AwADatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
                 model_dir=config["model_dir"]))
         return datasets
     elif config["dataset"] == "celeba":
@@ -61,7 +57,6 @@ def load_datasets(config):
             datasets.append(celeba.CELEBADatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
-                cache_dir=config.get("cache_dir", None),
                 model_dir=config["model_dir"]))
         return datasets
     raise ValueError(f"Unrecognised dataset: {config['dataset']}")

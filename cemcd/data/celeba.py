@@ -1,26 +1,16 @@
 """
 Adapted from https://github.com/mateoespinosa/cem
 """
-import os
-import torch
-import torchvision
-
-from pytorch_lightning import seed_everything
-from torchvision import transforms
-
-
 from pathlib import Path
 import numpy as np
 import torch
-from PIL import Image
-from cemcd.data import transforms
+import torchvision
 from cemcd.data.base import Datasets
-
+from cemcd.data import transforms
 
 #########################################################
 ## CONCEPT INFORMATION REGARDING CelebA
 #########################################################
-
 
 SELECTED_CONCEPTS = [
     2,
@@ -123,10 +113,10 @@ def load_celeba(dataset_dir):
     sorted_concepts = list(map(
         lambda x: x[0],
         sorted(enumerate(np.abs(concept_freq - 0.5)), key=lambda x: x[1])))
-    num_concepts = 2
+    num_concepts = 4
     concept_idxs = sorted_concepts[:num_concepts]
     concept_idxs = sorted(concept_idxs)
-    num_hidden = 6
+    num_hidden = 4
     hidden_concepts = sorted(
         sorted_concepts[
             num_concepts:min(
@@ -212,6 +202,7 @@ def load_celeba(dataset_dir):
     for i, name in enumerate(CONCEPT_SEMANTICS):
         if i not in concept_idxs:
             concept_names.append(name)
+    concept_names = concept_names + list(map(lambda s: "NOT " + s, concept_names))
 
     return {
         "train_data": celeba_train_data,
@@ -229,7 +220,6 @@ class CELEBADatasets(Datasets):
             self,
             foundation_model=None,
             dataset_dir="/datasets",
-            cache_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         dataset = load_celeba(dataset_dir)   
@@ -245,14 +235,20 @@ class CELEBADatasets(Datasets):
             getter.length = len(data)
             return getter
 
+        train_img_transform = None
+        val_test_img_transform = None
+        if foundation_model is None:
+            train_img_transform = transforms.resnet_train
+            val_test_img_transform = transforms.resnet_val_test
+
         super().__init__(
             train_getter=data_getter(train_data),
             val_getter=data_getter(val_data),
             test_getter=data_getter(test_data),
             foundation_model=foundation_model,
-            train_img_transform=None,
-            val_test_img_transform=None,
-            cache_dir=cache_dir,
+            train_img_transform=train_img_transform,
+            val_test_img_transform=val_test_img_transform,
+            dataset_dir=Path(dataset_dir) / "celeba",
             model_dir=model_dir,
             device=device
         )

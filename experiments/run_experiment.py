@@ -210,7 +210,9 @@ def run_experiment(run_dir, config):
             val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
             test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
             save_path=run_dir / f"enhanced_{dataset.foundation_model or 'basic'}cem.pth",
-            max_epochs=config["max_epochs"])
+            max_epochs=config["max_epochs"],
+            use_task_class_weights=config["use_task_class_weights"],
+            use_concept_loss_weights=config["use_concept_loss_weights"])
         model_results = get_accuracies(test_results, dataset.n_concepts, f"enhanced_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
         models_with_discovered_concepts.append(model)
@@ -233,7 +235,9 @@ def run_experiment(run_dir, config):
             val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
             test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
             save_path=run_dir / f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem.pth",
-            max_epochs=config["max_epochs"])
+            max_epochs=config["max_epochs"],
+            use_task_class_weights=config["use_task_class_weights"],
+            use_concept_loss_weights=config["use_concept_loss_weights"])
         model_results = get_accuracies(test_results, dataset.n_concepts, f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
         models_with_perfect_discovered_concepts.append(model)

@@ -4,6 +4,7 @@ import lightning
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from cemcd.models.cem import ConceptEmbeddingModel
 from cemcd.models.cbm import ConceptBottleneckModel
+from cemcd.models.black_box import BlackBoxModel
 
 def calculate_task_class_weights(n_tasks, train_dl):
     attribute_count = np.zeros((max(n_tasks, 2),))
@@ -166,7 +167,50 @@ def train_cbm(
             EarlyStopping(
                 monitor="val_loss",
                 min_delta=0.0,
-                patience=25,
+                patience=15,
+                verbose=False,
+                mode="min",
+            ),
+        ],
+    )
+
+    trainer.fit(model, train_dl, val_dl)
+
+    if save_path is not None:
+        torch.save(model.state_dict(), save_path)
+
+    model.freeze()
+    [test_results] = trainer.test(model, test_dl)
+
+    return model, test_results
+
+def train_black_box(
+        n_tasks,
+        latent_representation_size,
+        train_dl,
+        val_dl,
+        test_dl,
+        save_path=None,
+        max_epochs=300,
+        use_task_class_weights=False):
+    task_class_weights = None
+    if use_task_class_weights:
+        task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
+
+    model = BlackBoxModel(
+        n_tasks=n_tasks,
+        latent_representation_size=latent_representation_size,
+        task_class_weights=task_class_weights
+    )
+
+    trainer = lightning.Trainer(
+        max_epochs=max_epochs,
+        check_val_every_n_epoch=5,
+        callbacks=[
+            EarlyStopping(
+                monitor="val_loss",
+                min_delta=0.0,
+                patience=15,
                 verbose=False,
                 mode="min",
             ),
