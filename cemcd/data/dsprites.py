@@ -68,25 +68,22 @@ class DSpritesDatasets(Datasets):
 
         def data_getter(imgs, y, c):
             def getter(idx):
-                return imgs[idx], y[idx], c[idx]
+                img = imgs[idx]
+                if foundation_model is not None:
+                    img = np.repeat(img[..., np.newaxis], 3, axis=2)
+                img = torchvision.transforms.ToTensor()(img)
+                return img, y[idx], c[idx]
 
             getter.length = len(imgs)
             return getter
-
-        transform = torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)])
-        train_val_test_img_transform = torchvision.transforms.ToTensor()
-        if foundation_model is not None:
-            train_val_test_img_transform = lambda img: transform(np.repeat(img[..., np.newaxis], 3, axis=2))
 
         super().__init__(
             train_getter=data_getter(imgs_train, y_train, c_train),
             val_getter=data_getter(imgs_val, y_val, c_val),
             test_getter=data_getter(imgs_test, y_test, c_test),
             foundation_model=foundation_model,
-            train_img_transform=train_val_test_img_transform,
-            val_test_img_transform=train_val_test_img_transform,
+            train_img_transform=None,
+            val_test_img_transform=None,
             dataset_dir=Path(dataset_dir) / "dSprites",
             model_dir=model_dir,
             device=device
