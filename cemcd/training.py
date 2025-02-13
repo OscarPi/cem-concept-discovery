@@ -31,7 +31,7 @@ def calculate_task_class_weights(n_tasks, train_dl):
             [attribute_count[0]/attribute_count[1]]
         )
 
-    return torch.FloatTensor(task_class_weights)
+    return torch.tensor(task_class_weights, dtype=torch.float32)
 
 def calculate_concept_loss_weights(n_concepts, train_dl):
     attribute_count = np.zeros((n_concepts,))
@@ -45,7 +45,7 @@ def calculate_concept_loss_weights(n_concepts, train_dl):
     attribute_count[attribute_count == 0] = 1
     imbalance = samples_seen / attribute_count - 1
 
-    return torch.FloatTensor(imbalance)
+    return torch.tensor(imbalance, dtype=torch.float32)
 
 def train_cem(
         n_concepts,

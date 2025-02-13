@@ -77,7 +77,7 @@ class MNISTDatasets(Datasets):
                 return (
                     torchvision.transforms.ToTensor()(samples[idx]),
                     np.sum(labels[idx]),
-                    torch.FloatTensor(labels[idx] > (max_digit / 2)))
+                    torch.tensor(labels[idx] > (max_digit / 2), dtype=torch.float32))
             getter.length = len(samples)
             return getter
 

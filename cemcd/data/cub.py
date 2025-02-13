@@ -768,7 +768,7 @@ class CUBDatasets(Datasets):
                 attr_label = example["attribute_label"]
                 attr_label = compress_colour_concepts(attr_label)
 
-                return image, class_label, torch.FloatTensor(attr_label)
+                return image, class_label, torch.tensor(attr_label, dtype=torch.float32)
             getter.length = len(data)
             return getter
 
