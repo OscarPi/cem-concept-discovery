@@ -7,10 +7,11 @@ import clip
 from cemcd.data import transforms
 
 class CEMDataset(Dataset):
-    def __init__(self, data_getter, transform=None, additional_concepts=None):
+    def __init__(self, data_getter, transform=None, additional_concepts=None, use_provided_concepts=True):
         self.data_getter = data_getter
         self.transform = transform
         self.additional_concepts = additional_concepts
+        self.use_provided_concepts = use_provided_concepts
 
     def __len__(self):
         return self.data_getter.length
@@ -20,6 +21,9 @@ class CEMDataset(Dataset):
 
         if self.transform:
             x = self.transform(x)
+
+        if not self.use_provided_concepts:
+            c = torch.tensor([], dtype=torch.float32)
 
         if self.additional_concepts is not None:
             c = torch.concat((c, torch.from_numpy(self.additional_concepts[idx].astype(np.float32))))
@@ -35,6 +39,7 @@ class Datasets:
             foundation_model=None,
             train_img_transform=None,
             val_test_img_transform=None,
+            use_provided_concepts=True,
             dataset_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
@@ -44,6 +49,7 @@ class Datasets:
         self.test_getter = test_getter
         self.train_img_transform = train_img_transform
         self.val_test_img_transform = val_test_img_transform
+        self.use_provided_concepts = use_provided_concepts
 
         if self.foundation_model is not None:
             if (Path(dataset_dir) / f"{self.foundation_model}.pt").exists():
@@ -127,6 +133,8 @@ class Datasets:
     def train_dl(self, additional_concepts=None):
         if self.foundation_model is not None:
             c = self.train_c
+            if not self.use_provided_concepts:
+                c = torch.empty(size=(self.train_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
             dataset = TensorDataset(self.train_x, self.train_y, c)
@@ -134,7 +142,8 @@ class Datasets:
             dataset = CEMDataset(
                 data_getter=self.train_getter,
                 transform=self.train_img_transform,
-                additional_concepts=additional_concepts)
+                additional_concepts=additional_concepts,
+                use_provided_concepts=self.use_provided_concepts)
 
         return DataLoader(
             dataset,
@@ -144,6 +153,8 @@ class Datasets:
     def val_dl(self, additional_concepts=None):
         if self.foundation_model is not None:
             c = self.val_c
+            if not self.use_provided_concepts:
+                c = torch.empty(size=(self.val_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
             dataset = TensorDataset(self.val_x, self.val_y, c)
@@ -151,7 +162,8 @@ class Datasets:
             dataset = CEMDataset(
                 data_getter=self.val_getter,
                 transform=self.val_test_img_transform,
-                additional_concepts=additional_concepts)
+                additional_concepts=additional_concepts,
+                use_provided_concepts=self.use_provided_concepts)
 
         return DataLoader(
             dataset,
@@ -161,6 +173,8 @@ class Datasets:
     def test_dl(self, additional_concepts=None):
         if self.foundation_model is not None:
             c = self.test_c
+            if not self.use_provided_concepts:
+                c = torch.empty(size=(self.test_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
             dataset = TensorDataset(self.test_x, self.test_y, c)
@@ -168,7 +182,8 @@ class Datasets:
             dataset = CEMDataset(
                 data_getter=self.test_getter,
                 transform=self.val_test_img_transform,
-                additional_concepts=additional_concepts)
+                additional_concepts=additional_concepts,
+                use_provided_concepts=self.use_provided_concepts)
         
         return DataLoader(
                 dataset,

@@ -11,9 +11,11 @@ pre_concept_cnn_config:
   height: 28
   channels: 2
 max_epochs: 300
-n_clusters: 2
+min_n_clusters: 2
+max_n_clusters: 100
 foundation_models:
   - dinov2
+  - clip
 minimum_cluster_size: 0.01
 results_dir: results/
 use_wandb: True

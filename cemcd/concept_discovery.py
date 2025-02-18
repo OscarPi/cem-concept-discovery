@@ -111,8 +111,22 @@ def discover_concepts(config, save_path, initial_models, datasets):
             for e in embeddings:
                 Zs.append(e[:, concept_idx][sample_filter])
 
+            best_score = - len(Zs)
+            best_n_clusters = None
+            for n in range(config["min_n_clusters"], config["max_n_clusters"] + 1):
+                cluster_labels, _ = turtle.run_turtle(
+                    Zs=Zs, k=n, warm_start=config["warm_start"], epochs=config["turtle_epochs"])
+                score = 0
+                for Z in Zs:
+                    score += sklearn.metrics.silhouette_score(Z, cluster_labels)
+                
+                print(f"n={n}, score={score}")
+                if score > best_score:
+                    best_score = score
+                    best_n_clusters = n
+
             cluster_labels, _ = turtle.run_turtle(
-                Zs=Zs, k=config["n_clusters"], warm_start=config["warm_start"], epochs=config["turtle_epochs"])
+                Zs=Zs, k=best_n_clusters, warm_start=config["warm_start"], epochs=config["turtle_epochs"])
             clusters = np.unique(cluster_labels)
 
             for cluster in clusters:
