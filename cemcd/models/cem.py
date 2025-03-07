@@ -65,10 +65,22 @@ class ConceptEmbeddingModel(base.BaseModel):
 
         if c_true is not None and interventions is not None:
             interventions = interventions.to(predicted_concept_probs.device)
+            if isinstance(self.intervention_off_value, torch.Tensor):
+                intervention_off_value = self.intervention_off_value.to(
+                    dtype=torch.float32,
+                    device=predicted_concept_probs.device)
+            else:
+                intervention_off_value = self.intervention_off_value
+            if isinstance(self.intervention_on_value, torch.Tensor):
+                intervention_on_value = self.intervention_on_value.to(
+                    dtype=torch.float32,
+                    device=predicted_concept_probs.device)
+            else:
+                intervention_on_value = self.intervention_on_value
 
             c_true = torch.where(
                 torch.logical_or(c_true == 0, c_true == 1),
-                c_true,
+                torch.where(c_true == 0, intervention_off_value, intervention_on_value),
                 predicted_concept_probs
             )
 
