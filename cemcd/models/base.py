@@ -10,6 +10,8 @@ class BaseModel(lightning.LightningModule):
         self.n_tasks = n_tasks
 
         self.intervention_mask = None
+        self.intervention_on_value = 1
+        self.intervention_off_value = 0
 
         self.loss_concept = torch.nn.BCELoss(weight=concept_loss_weights)
         if self.n_tasks > 1:

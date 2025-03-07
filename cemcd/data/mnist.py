@@ -98,11 +98,15 @@ class MNISTDatasets(Datasets):
         train_concepts = []
         test_concepts = []
         concept_names = []
+        self.sub_concept_map = []
         for i in range(n_digits):
+            sub_concepts = []
             for j in selected_digits:
+                sub_concepts.append(len(concept_names))
                 train_concepts.append(self.train_labels[:, i] == j)
                 test_concepts.append(self.test_labels[:, i] == j)
                 concept_names.append(f"Digit {i} is {j}")
+            self.sub_concept_map.append(sub_concepts)
         train_concepts = np.stack(train_concepts, axis=1)
         test_concepts = np.stack(test_concepts, axis=1)
 

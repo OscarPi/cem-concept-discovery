@@ -657,7 +657,9 @@ CONCEPT_SEMANTICS = [
     "has_wing_pattern::multi-colored",
 ]
 
-SELECTED_CONCEPT_SEMANTICS = list(np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS])
+N_CONCEPTS = len(CONCEPT_SEMANTICS)
+
+#SELECTED_CONCEPT_SEMANTICS = list(np.array(CONCEPT_SEMANTICS)[SELECTED_CONCEPTS])
 
 CONCEPT_GROUPS = [
     "has_wing_color",
@@ -667,6 +669,7 @@ CONCEPT_GROUPS = [
     "has_upper_tail_color",
     "has_breast_color",
     "has_throat_color",
+    "has_eye_color",
     "has_forehead_color",
     "has_under_tail_color",
     "has_nape_color",
@@ -677,22 +680,42 @@ CONCEPT_GROUPS = [
     "has_crown_color"
 ]
 
+LIGHT_COLOURS = ["white", "yellow", "blue", "buff", "iridescent", "green", "pink", "orange", "red"]
+DARK_COLOURS = ["grey", "black", "brown", "purple", "rufous", "olive"]
+
+COMPRESSED_CONCEPT_SEMANTICS = []
+SUB_CONCEPT_MAP = []
+for group in CONCEPT_GROUPS:
+    COMPRESSED_CONCEPT_SEMANTICS.append(f"{group}::light")
+    COMPRESSED_CONCEPT_SEMANTICS.append(f"{group}::dark")
+
+    light_sub_concepts = []
+    dark_sub_concepts = []
+    for idx, concept_name in enumerate(CONCEPT_SEMANTICS):
+        if group == concept_name[:concept_name.find("::")]:
+            colour = concept_name[concept_name.find("::")+2:]
+            if colour in LIGHT_COLOURS:
+                light_sub_concepts.append(idx)
+            elif colour in DARK_COLOURS:
+                dark_sub_concepts.append(idx)
+            else:
+                raise RuntimeError(f"Unrecognised colour: {colour}")
+    SUB_CONCEPT_MAP.append(light_sub_concepts)
+    SUB_CONCEPT_MAP.append(dark_sub_concepts)
+
 def compress_colour_concepts(concepts):
     light = defaultdict(bool)
     dark = defaultdict(bool)
 
-    light_colours = ["white", "yellow", "blue", "buff"]
-    dark_colours = ["grey", "black", "brown"]
-
     compressed_concepts = []
-    for idx, concept in enumerate(SELECTED_CONCEPT_SEMANTICS):
+    for idx, concept in enumerate(CONCEPT_SEMANTICS):
         group = concept[:concept.find("::")]
         if group in CONCEPT_GROUPS:
             colour = concept[concept.find("::")+2:]
             if concepts[idx] == 1:
-                if colour in light_colours:
+                if colour in LIGHT_COLOURS:
                     light[group] = True
-                elif colour in dark_colours:
+                elif colour in DARK_COLOURS:
                     dark[group] = True
                 else:
                     raise RuntimeError(f"Unrecognised colour: {colour}")
@@ -709,39 +732,6 @@ def compress_colour_concepts(concepts):
 
     return compressed_concepts
 
-COMPRESSED_CONCEPT_SEMANTICS = [
-    'has_wing_color::light',
-    'has_wing_color::dark',
-    'has_upperparts_color::light',
-    'has_upperparts_color::dark',
-    'has_underparts_color::light',
-    'has_underparts_color::dark',
-    'has_back_color::light',
-    'has_back_color::dark',
-    'has_upper_tail_color::light',
-    'has_upper_tail_color::dark',
-    'has_breast_color::light',
-    'has_breast_color::dark',
-    'has_throat_color::light',
-    'has_throat_color::dark',
-    'has_forehead_color::light',
-    'has_forehead_color::dark',
-    'has_under_tail_color::light',
-    'has_under_tail_color::dark',
-    'has_nape_color::light',
-    'has_nape_color::dark',
-    'has_belly_color::light',
-    'has_belly_color::dark',
-    'has_primary_color::light',
-    'has_primary_color::dark',
-    'has_leg_color::light',
-    'has_leg_color::dark',
-    'has_bill_color::light',
-    'has_bill_color::dark',
-    'has_crown_color::light',
-    'has_crown_color::dark'
-]
-
 class CUBDatasets(Datasets):
     def __init__(
             self,
@@ -749,14 +739,18 @@ class CUBDatasets(Datasets):
             dataset_dir="/datasets",
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
-        image_dir = Path(dataset_dir) / "CUB" / "images"
-        base_dir = Path(dataset_dir) / "CUB" / "class_attr_data_10"
-        with (base_dir / "train.pkl").open("rb") as f:
+        base_dir = Path(dataset_dir) / "CUB"      
+        image_dir = base_dir / "images"
+        data_dir = base_dir / "class_attr_data_10"
+        with (data_dir / "train.pkl").open("rb") as f:
             train_data = pickle.load(f)
-        with (base_dir / "val.pkl").open("rb") as f:
+        with (data_dir / "val.pkl").open("rb") as f:
             val_data = pickle.load(f)
-        with (base_dir / "test.pkl").open("rb") as f:
+        with (data_dir / "test.pkl").open("rb") as f:
             test_data = pickle.load(f)
+
+        concept_matrix = np.loadtxt(base_dir / "attributes" / "class_attribute_labels_continuous.txt", dtype=np.float32)
+        concept_matrix = (concept_matrix >= 50).astype(np.float32)
 
         def data_getter(data):
             def getter(idx):
@@ -765,10 +759,11 @@ class CUBDatasets(Datasets):
                 image_path = image_dir / image_path[78:]
                 image = Image.open(image_path).convert("RGB")
                 class_label = example["class_label"]
-                attr_label = example["attribute_label"]
-                attr_label = compress_colour_concepts(attr_label)
+                attr_label = np.array(example["attribute_label"])
+                assert np.mean(concept_matrix[class_label][SELECTED_CONCEPTS] == attr_label) > 0.8
+                concept_labels = compress_colour_concepts(concept_matrix[class_label])
 
-                return image, class_label, torch.tensor(attr_label, dtype=torch.float32)
+                return image, class_label, torch.tensor(concept_labels, dtype=torch.float32)
             getter.length = len(data)
             return getter
 
@@ -790,11 +785,14 @@ class CUBDatasets(Datasets):
             device=device
         )
 
-        train_concepts = np.array(list(map(lambda d: d["attribute_label"], train_data)))
+        train_concepts = np.array(list(map(lambda d: concept_matrix[d["class_label"]], train_data)))
         self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
-        test_concepts = np.array(list(map(lambda d: d["attribute_label"], test_data)))
+        test_concepts = np.array(list(map(lambda d: concept_matrix[d["class_label"]], test_data)))
         self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
-        self.concept_names = SELECTED_CONCEPT_SEMANTICS + list(map(lambda s: "NOT " + s, SELECTED_CONCEPT_SEMANTICS))
+        self.concept_names = CONCEPT_SEMANTICS + list(map(lambda s: "NOT " + s, CONCEPT_SEMANTICS))
 
         self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
         self.n_tasks = N_CLASSES
+
+        self.sub_concept_map = SUB_CONCEPT_MAP
+

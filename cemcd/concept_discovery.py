@@ -61,11 +61,13 @@ def fill_in_discovered_concept_labels(datasets, labels, max_epochs):
         full_labels = model(xs.to(device)).detach().cpu().numpy()
     return full_labels.squeeze() > 0.5
 
-def match_to_concept_bank(labels, dataset):
+def match_to_concept_bank(labels, dataset, chosen_concept_bank_idxs=None):
+    if chosen_concept_bank_idxs is None:
+        chosen_concept_bank_idxs = range(dataset.concept_bank.shape[1])
     not_nan = np.logical_not(np.isnan(labels))
     best_roc_auc = 0
     best_roc_auc_idx = None
-    for i in range(dataset.concept_bank.shape[1]):
+    for i in chosen_concept_bank_idxs:
         if np.all(dataset.concept_bank[:, i][not_nan] == 0) or np.all(dataset.concept_bank[:, i][not_nan] == 1):
             continue
         auc = sklearn.metrics.roc_auc_score(
@@ -193,6 +195,100 @@ def discover_concepts(config, save_path, initial_models, datasets):
             "n_discovered_concepts": n_discovered_concepts,
             "n_duplicates": n_duplicates,
             "did_not_match": did_not_match,
+            "discovered_concept_semantics": discovered_concept_semantics,
+            "discovered_concept_roc_aucs": discovered_concept_roc_aucs,
+        })
+
+    return discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs
+
+def split_concepts(config, save_path, initial_models, datasets):
+    save_path = Path(save_path)
+
+    train_dataset_size = len(datasets[0].train_dl().dataset)
+    test_dataset_size = len(datasets[0].test_dl().dataset)
+
+    predictions = []
+    embeddings = []
+    for dataset, model in zip(datasets, initial_models):
+        c_pred, c_embs, _ = calculate_embeddings(model, dataset.train_dl())
+        predictions.append(c_pred)
+        embeddings.append(c_embs)
+    predictions = np.stack(predictions, axis=0)
+
+    discovered_concept_labels = np.zeros((train_dataset_size, 0))
+    discovered_concept_train_ground_truth = np.zeros((train_dataset_size, 0))
+    discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
+    discovered_concept_semantics = []
+    discovered_concept_roc_aucs = []
+    n_discovered_concepts = 0
+
+    for concept_idx in trange(initial_models[0].n_concepts):
+        sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0)
+
+        Zs = []
+        for e in embeddings:
+            Zs.append(e[:, concept_idx][sample_filter])
+
+        best_score = - len(Zs)
+        best_n_clusters = None
+        for n in range(config["min_n_clusters"], config["max_n_clusters"] + 1):
+            cluster_labels, _ = turtle.run_turtle(
+                Zs=Zs, k=n, warm_start=config["warm_start"], epochs=config["turtle_epochs"])
+            score = 0
+            for Z in Zs:
+                score += sklearn.metrics.silhouette_score(Z, cluster_labels)
+
+            print(f"n={n}, score={score}")
+            if score > best_score:
+                best_score = score
+                best_n_clusters = n
+
+        cluster_labels, _ = turtle.run_turtle(
+            Zs=Zs, k=best_n_clusters, warm_start=config["warm_start"], epochs=config["turtle_epochs"])
+        clusters = np.unique(cluster_labels)
+
+        for cluster in clusters:
+            labels = np.repeat(0, train_dataset_size)
+            labels[sample_filter] = cluster_labels == cluster
+
+            roc_auc, matching_concept_idx = match_to_concept_bank(labels, datasets[0], datasets[0].sub_concept_map[concept_idx])
+
+            discovered_concept_name = datasets[0].concept_names[matching_concept_idx]
+
+            discovered_concept_labels = np.concatenate(
+                (discovered_concept_labels, np.expand_dims(labels, axis=1)),
+                axis=1)
+            discovered_concept_train_ground_truth = np.concatenate(
+                (discovered_concept_train_ground_truth, np.expand_dims(datasets[0].concept_bank[:, matching_concept_idx], axis=1)),
+                axis=1)
+            discovered_concept_test_ground_truth = np.concatenate(
+                (discovered_concept_test_ground_truth, np.expand_dims(datasets[0].concept_test_ground_truth[:, matching_concept_idx], axis=1)),
+                axis=1)
+            discovered_concept_semantics.append(discovered_concept_name)
+            discovered_concept_roc_aucs.append(roc_auc)
+            n_discovered_concepts += 1
+            if n_discovered_concepts == config["max_concepts_to_discover"]:
+                break
+        else:
+            continue
+        break
+
+
+    np.savez(save_path / "discovered_concepts.npz",
+        discovered_concept_labels=discovered_concept_labels,
+        discovered_concept_train_ground_truth=discovered_concept_train_ground_truth,
+        discovered_concept_test_ground_truth=discovered_concept_test_ground_truth)
+
+    with (save_path / "results.yaml").open("a") as f:
+        yaml.safe_dump({
+            "n_discovered_concepts": int(n_discovered_concepts),
+            "discovered_concept_semantics": list(map(str, discovered_concept_semantics)),
+            "discovered_concept_roc_aucs": list(map(float, discovered_concept_roc_aucs)),
+        }, f)
+
+    if config["use_wandb"]:
+        wandb.log({
+            "n_discovered_concepts": n_discovered_concepts,
             "discovered_concept_semantics": discovered_concept_semantics,
             "discovered_concept_roc_aucs": discovered_concept_roc_aucs,
         })

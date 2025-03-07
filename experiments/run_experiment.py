@@ -71,11 +71,13 @@ def get_accuracies(test_results, n_provided_concepts, model_name):
     results = {
         f"{model_name}_task_accuracy": float(task_accuracy),
         f"{model_name}_provided_concept_accuracy": float(provided_concept_accuracy),
+        f"{model_name}_provided_concept_accuracies": list(map(lambda x: round(float(x), 4), provided_concept_accuracies)),
         f"{model_name}_provided_concept_auc": float(provided_concept_auc),
         f"{model_name}_provided_concept_aucs": list(map(lambda x: round(float(x), 4), provided_concept_aucs))}
     if len(discovered_concept_accuracies) > 0:
         results.update({
             f"{model_name}_discovered_concept_accuracy": float(discovered_concept_accuracy),
+            f"{model_name}_discovered_concept_accuracies": list(map(lambda x: round(float(x), 4), discovered_concept_accuracies)),
             f"{model_name}_discovered_concept_auc": float(discovered_concept_auc),
             f"{model_name}_discovered_concept_aucs": list(map(lambda x: round(float(x), 4), discovered_concept_aucs))})
     return results
@@ -103,8 +105,25 @@ def create_run_name(results_dir, dataset):
                     return run_name
     raise RuntimeError("All run names have been used.")
 
-def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_time):
+def calculate_c_pred_percentiles(model, model_name, train_dl):
+    c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, train_dl)
+    percentile_95 = np.percentile(c_pred, 95, axis=0).tolist()
+    percentile_5 = np.percentile(c_pred, 5, axis=0).tolist()
+    results = {
+        f"{model_name}_c_pred_95_percentile": percentile_95,
+        f"{model_name}_c_pred_5_percentile": percentile_5,
+    }
+    return results
+
+def get_intervention_accuracies(model, train_dl, test_dl, concepts_to_intervene, one_at_a_time, model_name):
     trainer = lightning.Trainer()
+
+    c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, train_dl)
+    model.intervention_on_value = torch.from_numpy(np.percentile(c_pred, 95, axis=0))
+    model.intervention_off_value = torch.from_numpy(np.percentile(c_pred, 5, axis=0))
+    print(f"{model_name} interventions on value: {model.intervention_on_value}")
+    print(f"{model_name} interventions off value: {model.intervention_off_value}")
+
     intervention_accuracies = []
     model.intervention_mask = torch.tensor([0] * model.n_concepts)
     [test_results] = trainer.test(model, test_dl)
@@ -122,21 +141,26 @@ def test_concept_interventions(
         initial_models,
         models_with_discovered_concepts,
         datasets,
-        discovered_concept_test_ground_truth):
+        discovered_concept_test_ground_truth,
+        provided_concepts_removed):
     results = {}
 
     for dataset, model in zip(datasets, initial_models):
         model_name = (dataset.foundation_model or 'basic') + "cem"
         intervention_accuracies_cumulative = get_intervention_accuracies(
             model=model,
+            train_dl=dataset.train_dl(),
             test_dl=dataset.test_dl(),
             concepts_to_intervene=range(model.n_concepts),
-            one_at_a_time=False)
+            one_at_a_time=False,
+            model_name=f"initial_{model_name}")
         intervention_accuracies_one_at_a_time = get_intervention_accuracies(
             model=model,
+            train_dl=dataset.train_dl(),
             test_dl=dataset.test_dl(),
             concepts_to_intervene=range(model.n_concepts),
-            one_at_a_time=True)
+            one_at_a_time=True,
+            model_name=f"initial_{model_name}")
         results[f"initial_{model_name}_interventions_cumulative"] = intervention_accuracies_cumulative
         results[f"initial_{model_name}_interventions_one_at_a_time"] = intervention_accuracies_one_at_a_time
 
@@ -144,30 +168,45 @@ def test_concept_interventions(
     n_discovered_concepts = discovered_concept_test_ground_truth.shape[1]
     all_concepts = range(n_provided_concepts + n_discovered_concepts)
     provided_concepts = range(n_provided_concepts)
-    discovered_concepts = range(n_provided_concepts, n_provided_concepts + n_discovered_concepts)
+    if provided_concepts_removed:
+        discovered_concepts = range(n_discovered_concepts)
+    else:
+        discovered_concepts = range(n_provided_concepts, n_provided_concepts + n_discovered_concepts)
 
     for dataset, model in zip(datasets, models_with_discovered_concepts):
         model_name = (dataset.foundation_model or 'basic') + "cem"
-        results[f"enhanced_{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
-            model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-            concepts_to_intervene=all_concepts,
-            one_at_a_time=False)
+        train_dataset_size = len(dataset.train_dl().dataset)
+
         results[f"enhanced_{model_name}_discovered_concept_interventions_cumulative"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan), use_provided_concepts=not provided_concepts_removed),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth, use_provided_concepts=not provided_concepts_removed),
             concepts_to_intervene=discovered_concepts,
-            one_at_a_time=False)
-        results[f"enhanced_{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
-            model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-            concepts_to_intervene=provided_concepts,
-            one_at_a_time=True)
+            one_at_a_time=False,
+            model_name=f"enhanced_{model_name}")
         results[f"enhanced_{model_name}_discovered_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan), use_provided_concepts=not provided_concepts_removed),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth, use_provided_concepts=not provided_concepts_removed),
             concepts_to_intervene=discovered_concepts,
-            one_at_a_time=True)
+            one_at_a_time=True,
+            model_name=f"enhanced_{model_name}")
+
+        if not provided_concepts_removed:
+            results[f"enhanced_{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
+                model=model,
+                train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan)),
+                test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+                concepts_to_intervene=all_concepts,
+                one_at_a_time=False,
+                model_name=f"enhanced_{model_name}")
+            results[f"enhanced_{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+                model=model,
+                train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan)),
+                test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+                concepts_to_intervene=provided_concepts,
+                one_at_a_time=True,
+                model_name=f"enhanced_{model_name}")
 
     return results
 
@@ -192,7 +231,10 @@ def run_experiment(run_dir, config):
         model_results = get_accuracies(test_result, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
 
-    discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs = cemcd.concept_discovery.discover_concepts(
+    for dataset, model in zip(datasets, initial_models):
+        log(calculate_c_pred_percentiles(model, f"initial_{dataset.foundation_model or 'basic'}cem", dataset.train_dl()))
+
+    discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs = cemcd.concept_discovery.split_concepts(
         config=config,
         save_path=run_dir,
         initial_models=initial_models,
@@ -202,111 +244,85 @@ def run_experiment(run_dir, config):
     models_with_discovered_concepts = []
     for dataset in datasets:
         model, test_results = train_cem(
-            n_concepts=dataset.n_concepts + n_discovered_concepts,
+            n_concepts=n_discovered_concepts,
             n_tasks=dataset.n_tasks,
             pre_concept_model=pre_concept_model if dataset.foundation_model is None else None,
             latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
-            train_dl=dataset.train_dl(discovered_concept_labels),
-            val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            train_dl=dataset.train_dl(discovered_concept_labels, use_provided_concepts=False),
+            val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan), use_provided_concepts=False),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth, use_provided_concepts=False),
             save_path=run_dir / f"enhanced_{dataset.foundation_model or 'basic'}cem.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],
             use_concept_loss_weights=config["use_concept_loss_weights"])
-        model_results = get_accuracies(test_results, dataset.n_concepts, f"enhanced_{dataset.foundation_model or 'basic'}cem")
+        model_results = get_accuracies(test_results, 0, f"enhanced_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
+        log(calculate_c_pred_percentiles(model, f"enhanced_{dataset.foundation_model or 'basic'}cem", dataset.train_dl(discovered_concept_labels, use_provided_concepts=False)))
         models_with_discovered_concepts.append(model)
 
     intervention_results = test_concept_interventions(
         initial_models=initial_models,
         models_with_discovered_concepts=models_with_discovered_concepts,
         datasets=datasets,
-        discovered_concept_test_ground_truth=discovered_concept_test_ground_truth)
+        discovered_concept_test_ground_truth=discovered_concept_test_ground_truth,
+        provided_concepts_removed=True)
     log(intervention_results)
 
     models_with_perfect_discovered_concepts = []
     for dataset in datasets:
         model, test_results = train_cem(
-            n_concepts=dataset.n_concepts + n_discovered_concepts,
+            n_concepts=n_discovered_concepts,
             n_tasks=dataset.n_tasks,
             pre_concept_model=pre_concept_model if dataset.foundation_model is None else None,
             latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
-            train_dl=dataset.train_dl(discovered_concept_train_ground_truth),
-            val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            train_dl=dataset.train_dl(discovered_concept_train_ground_truth, use_provided_concepts=False),
+            val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan), use_provided_concepts=False),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth, use_provided_concepts=False),
             save_path=run_dir / f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],
             use_concept_loss_weights=config["use_concept_loss_weights"])
-        model_results = get_accuracies(test_results, dataset.n_concepts, f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem")
+        model_results = get_accuracies(test_results, 0, f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem")
         log(model_results)
+        log(calculate_c_pred_percentiles(model, f"ground_truth_baseline_{dataset.foundation_model or 'basic'}cem", dataset.train_dl(discovered_concept_train_ground_truth, use_provided_concepts=False)))
         models_with_perfect_discovered_concepts.append(model)
 
     int_baseline_results = {}
-    all_concepts = range(datasets[0].n_concepts + n_discovered_concepts)
-    provided_concepts = range(datasets[0].n_concepts)
-    discovered_concepts = range(datasets[0].n_concepts, datasets[0].n_concepts + n_discovered_concepts)
+    # all_concepts = range(datasets[0].n_concepts + n_discovered_concepts)
+    # provided_concepts = range(datasets[0].n_concepts)
+    discovered_concepts = range(n_discovered_concepts)
     for dataset, model in zip(datasets, models_with_perfect_discovered_concepts):
+        train_dataset_size = len(dataset.train_dl().dataset)
         model_name = (dataset.foundation_model or 'basic') + "cem"
-        int_baseline_results[f"ground_truth_baseline_{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
-            model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-            concepts_to_intervene=all_concepts,
-            one_at_a_time=False)
+        # int_baseline_results[f"ground_truth_baseline_{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
+        #     model=model,
+        #     train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan)),
+        #     test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+        #     concepts_to_intervene=all_concepts,
+        #     one_at_a_time=False,
+        #     model_name=f"ground_truth_baseline_{model_name}")
         int_baseline_results[f"ground_truth_baseline_{model_name}_discovered_concept_interventions_cumulative"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan), use_provided_concepts=False),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth, use_provided_concepts=False),
             concepts_to_intervene=discovered_concepts,
-            one_at_a_time=False)
-        int_baseline_results[f"ground_truth_baseline_{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
-            model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-            concepts_to_intervene=provided_concepts,
-            one_at_a_time=True)
+            one_at_a_time=False,
+            model_name=f"ground_truth_baseline_{model_name}")
+        # int_baseline_results[f"ground_truth_baseline_{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+        #     model=model,
+        #     train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan)),
+        #     test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+        #     concepts_to_intervene=provided_concepts,
+        #     one_at_a_time=True,
+        #     model_name=f"ground_truth_baseline_{model_name}")
         int_baseline_results[f"ground_truth_baseline_{model_name}_discovered_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_concepts), np.nan), use_provided_concepts=False),
+            test_dl=dataset.test_dl(discovered_concept_test_ground_truth, use_provided_concepts=False),
             concepts_to_intervene=discovered_concepts,
-            one_at_a_time=True)
+            one_at_a_time=True,
+            model_name=f"ground_truth_baseline_{model_name}")
     log(int_baseline_results)
-
-  
-    # concept_model = make_concept_model(config, datasets[0].n_concepts)
-    # cbm, cbm_test_results = train_cbm(
-    #     n_concepts=datasets[0].n_concepts,
-    #     n_tasks=datasets[0].n_tasks,
-    #     concept_model=concept_model,
-    #     train_dl=datasets[0].train_dl(),
-    #     val_dl=datasets[0].val_dl(),
-    #     test_dl=datasets[0].test_dl(),
-    #     black_box=False,
-    #     save_path=run_dir / "cbm_baseline.pth",
-    #     max_epochs=config["max_epochs"])
-    # cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
-    # cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
-    # cbm_intervention_accuracies = get_intervention_accuracies(
-    #     model=cbm,
-    #     test_dl=datasets[0].test_dl(),
-    #     concepts_to_intervene=range(cbm.n_concepts))
-    # log({
-    #     "cbm_task_accuracy": cbm_task_accuracy,
-    #     "cbm_concept_auc": cbm_concept_auc,
-    #     "cbm_intervention_accuracies": cbm_intervention_accuracies
-    # })
-
-    # # CBM with concept loss weight of 0 is a black box
-    # _, black_box_test_results = train_cbm(
-    #     n_concepts=list(pre_concept_model.modules())[-1].out_features,
-    #     n_tasks=datasets[0].n_tasks,
-    #     concept_model=pre_concept_model,
-    #     train_dl=datasets[0].train_dl(),
-    #     val_dl=datasets[0].val_dl(),
-    #     test_dl=datasets[0].test_dl(),
-    #     black_box=True,
-    #     save_path=run_dir / "black_box_baseline.pth",
-    #     max_epochs=config["max_epochs"])
-    # black_box_task_accuracy = round(black_box_test_results["test_y_accuracy"], 4)
-    # log({"black_box_task_accuracy": black_box_task_accuracy})
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")

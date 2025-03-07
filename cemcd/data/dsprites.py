@@ -105,6 +105,11 @@ class DSpritesDatasets(Datasets):
             quadrant_train == 3
         ), axis=1)
         self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
+        self.sub_concept_map = [
+            [11, 12],
+            [7, 8],
+            [3, 4, 5]
+        ]
 
         test_concepts = np.stack((
             scale_test == 0,

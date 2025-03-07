@@ -39,7 +39,6 @@ class Datasets:
             foundation_model=None,
             train_img_transform=None,
             val_test_img_transform=None,
-            use_provided_concepts=True,
             dataset_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
@@ -49,7 +48,6 @@ class Datasets:
         self.test_getter = test_getter
         self.train_img_transform = train_img_transform
         self.val_test_img_transform = val_test_img_transform
-        self.use_provided_concepts = use_provided_concepts
 
         if self.foundation_model is not None:
             if (Path(dataset_dir) / f"{self.foundation_model}.pt").exists():
@@ -130,10 +128,10 @@ class Datasets:
                 cs.append(c)
         return torch.stack(xs), torch.tensor(ys), torch.stack(cs)
     
-    def train_dl(self, additional_concepts=None):
+    def train_dl(self, additional_concepts=None, use_provided_concepts=True):
         if self.foundation_model is not None:
             c = self.train_c
-            if not self.use_provided_concepts:
+            if not use_provided_concepts:
                 c = torch.empty(size=(self.train_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
@@ -143,17 +141,17 @@ class Datasets:
                 data_getter=self.train_getter,
                 transform=self.train_img_transform,
                 additional_concepts=additional_concepts,
-                use_provided_concepts=self.use_provided_concepts)
+                use_provided_concepts=use_provided_concepts)
 
         return DataLoader(
             dataset,
             batch_size=256,
             num_workers=7)
 
-    def val_dl(self, additional_concepts=None):
+    def val_dl(self, additional_concepts=None, use_provided_concepts=True):
         if self.foundation_model is not None:
             c = self.val_c
-            if not self.use_provided_concepts:
+            if not use_provided_concepts:
                 c = torch.empty(size=(self.val_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
@@ -163,17 +161,17 @@ class Datasets:
                 data_getter=self.val_getter,
                 transform=self.val_test_img_transform,
                 additional_concepts=additional_concepts,
-                use_provided_concepts=self.use_provided_concepts)
+                use_provided_concepts=use_provided_concepts)
 
         return DataLoader(
             dataset,
             batch_size=256,
             num_workers=7)
     
-    def test_dl(self, additional_concepts=None):
+    def test_dl(self, additional_concepts=None, use_provided_concepts=True):
         if self.foundation_model is not None:
             c = self.test_c
-            if not self.use_provided_concepts:
+            if not use_provided_concepts:
                 c = torch.empty(size=(self.test_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
@@ -183,7 +181,7 @@ class Datasets:
                 data_getter=self.test_getter,
                 transform=self.val_test_img_transform,
                 additional_concepts=additional_concepts,
-                use_provided_concepts=self.use_provided_concepts)
+                use_provided_concepts=use_provided_concepts)
         
         return DataLoader(
                 dataset,
