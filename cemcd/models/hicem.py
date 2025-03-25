@@ -74,46 +74,65 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
         first_sub_concept_idx = 0
         for top_concept_idx, top_concept_generator in enumerate(self.top_concept_embedding_generators):
             top_concept_embeddings = top_concept_generator(latent)
-            predicted_top_concept_probs = self.sigmoid(self.scoring_function(top_concept_embeddings)).squeeze()
-            all_predicted_top_concept_probs.append(predicted_top_concept_probs)
-
             top_concept_positive_embeddings = top_concept_embeddings[:, :self.embedding_size]
             top_concept_negative_embeddings = top_concept_embeddings[:, self.embedding_size:]
 
-            all_sub_concept_embeddings = []
-            for sub_concept_idx in range(first_sub_concept_idx, first_sub_concept_idx + self.n_sub_concepts[top_concept_idx]):
-                sub_concept_embeddings = self.sub_concept_embedding_generators[sub_concept_idx](top_concept_positive_embeddings)
-                predicted_sub_concept_probs = self.sigmoid(self.scoring_function(sub_concept_embeddings)).squeeze()
-                all_predicted_sub_concept_probs.append(predicted_sub_concept_probs)
-                sub_concept_probs_after_interventions = predicted_sub_concept_probs
-                if c_true is not None and intervention_mask is not None and intervention_mask[self.n_top_concepts + sub_concept_idx] == 1:
+            if self.n_sub_concepts[top_concept_idx] > 0:
+                sub_concept_interventions = torch.full((x.shape[0], self.n_sub_concepts[top_concept_idx]), torch.nan, device=top_concept_embeddings.device) # Batch size x n_sub_concepts
+                if c_true is not None and intervention_mask is not None:
+                    for sub_concept_idx in range(first_sub_concept_idx, first_sub_concept_idx + self.n_sub_concepts[top_concept_idx]):
+                        if intervention_mask[self.n_top_concepts + sub_concept_idx] == 1:
+                            sub_concept_interventions = torch.where(
+                                torch.unsqueeze(c_true[:, self.n_top_concepts + sub_concept_idx] == 1, dim=-1),
+                                0,
+                                sub_concept_interventions
+                            )
+                            sub_concept_interventions[:, sub_concept_idx - first_sub_concept_idx] = torch.where(
+                                torch.logical_or(
+                                    c_true[:, self.n_top_concepts + sub_concept_idx] == 0,
+                                    c_true[:, self.n_top_concepts + sub_concept_idx] == 1
+                                ),
+                                c_true[:, self.n_top_concepts + sub_concept_idx],
+                                torch.nan
+                            )
+
+                all_sub_concept_embeddings = []
+                predicted_top_concept_probs = torch.zeros(x.shape[0], device=top_concept_embeddings.device)
+                top_concept_probs_after_sub_concept_interventions = torch.zeros(x.shape[0], device=top_concept_embeddings.device)
+                for sub_concept_idx in range(first_sub_concept_idx, first_sub_concept_idx + self.n_sub_concepts[top_concept_idx]):
+                    sub_concept_embeddings = self.sub_concept_embedding_generators[sub_concept_idx](top_concept_positive_embeddings)
+                    predicted_sub_concept_probs = self.sigmoid(self.scoring_function(sub_concept_embeddings)).squeeze()
+                    all_predicted_sub_concept_probs.append(predicted_sub_concept_probs)
+                    predicted_top_concept_probs = torch.maximum(predicted_top_concept_probs, predicted_sub_concept_probs)
                     sub_concept_probs_after_interventions = torch.where(
-                        torch.logical_or(
-                            c_true[:, self.n_top_concepts + sub_concept_idx] == 0,
-                            c_true[:, self.n_top_concepts + sub_concept_idx] == 1
-                        ),
-                        c_true[:, self.n_top_concepts + sub_concept_idx],
-                        predicted_sub_concept_probs
+                        torch.isnan(sub_concept_interventions[:, sub_concept_idx - first_sub_concept_idx]),
+                        predicted_sub_concept_probs,
+                        sub_concept_interventions[:, sub_concept_idx - first_sub_concept_idx]
                     )
-                    
-                mixed_sub_concept_embeddings = (
-                    sub_concept_embeddings[:, :self.embedding_size] * torch.unsqueeze(sub_concept_probs_after_interventions, dim=-1) +
-                    sub_concept_embeddings[:, self.embedding_size:] * (1 - torch.unsqueeze(sub_concept_probs_after_interventions, dim=-1))
-                )
-                all_sub_concept_embeddings.append(mixed_sub_concept_embeddings)
+                    top_concept_probs_after_sub_concept_interventions = torch.maximum(top_concept_probs_after_sub_concept_interventions, sub_concept_probs_after_interventions)
 
-            top_positive_embeddings = top_concept_positive_embeddings
-            if len(all_sub_concept_embeddings) > 0:
+                    mixed_sub_concept_embeddings = (
+                        sub_concept_embeddings[:, :self.embedding_size] * torch.unsqueeze(sub_concept_probs_after_interventions, dim=-1) +
+                        sub_concept_embeddings[:, self.embedding_size:] * (1 - torch.unsqueeze(sub_concept_probs_after_interventions, dim=-1))
+                    )
+                    all_sub_concept_embeddings.append(mixed_sub_concept_embeddings)
+
                 top_positive_embeddings = self.embedding_compressors[top_concept_idx](torch.cat(all_sub_concept_embeddings, dim=-1))
+            else:
+                top_positive_embeddings = top_concept_positive_embeddings
+                predicted_top_concept_probs = self.sigmoid(self.scoring_function(top_concept_embeddings)).squeeze()
 
-            top_concept_probs_after_interventions = predicted_top_concept_probs
+                top_concept_probs_after_sub_concept_interventions = predicted_top_concept_probs
+
+            all_predicted_top_concept_probs.append(predicted_top_concept_probs)
+            top_concept_probs_after_interventions = top_concept_probs_after_sub_concept_interventions
             if c_true is not None and intervention_mask is not None and intervention_mask[top_concept_idx] == 1:
                 top_concept_probs_after_interventions = torch.where(
                     torch.logical_or(
                         c_true[:, top_concept_idx] == 0,
                         c_true[:, top_concept_idx] == 1),
                     c_true[:, top_concept_idx],
-                    predicted_top_concept_probs
+                    top_concept_probs_after_sub_concept_interventions
                 )
 
             all_mixed_embeddings.append(

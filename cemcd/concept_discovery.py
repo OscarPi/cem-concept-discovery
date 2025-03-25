@@ -1,7 +1,7 @@
 from pathlib import Path
 import yaml
 import wandb
-from tqdm import trange
+from tqdm import tqdm, trange
 import sklearn.metrics
 import numpy as np
 import torch
@@ -201,7 +201,7 @@ def discover_concepts(config, save_path, initial_models, datasets):
 
     return discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs
 
-def split_concepts(config, save_path, initial_models, datasets):
+def split_concepts(config, save_path, initial_models, datasets, concepts_to_split):
     save_path = Path(save_path)
 
     train_dataset_size = len(datasets[0].train_dl().dataset)
@@ -220,9 +220,10 @@ def split_concepts(config, save_path, initial_models, datasets):
     discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
     discovered_concept_semantics = []
     discovered_concept_roc_aucs = []
-    n_discovered_concepts = 0
+    # turtle_classifiers = []
+    n_discovered_subconcepts = [0] * predictions.shape[2]
 
-    for concept_idx in trange(initial_models[0].n_concepts):
+    for concept_idx in tqdm(concepts_to_split):
         sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0)
 
         Zs = []
@@ -232,7 +233,7 @@ def split_concepts(config, save_path, initial_models, datasets):
         best_score = - len(Zs)
         best_n_clusters = None
         for n in range(config["min_n_clusters"], config["max_n_clusters"] + 1):
-            cluster_labels, _ = turtle.run_turtle(
+            cluster_labels, _, _ = turtle.run_turtle(
                 Zs=Zs, k=n, warm_start=config["warm_start"], epochs=config["turtle_epochs"])
             score = 0
             for Z in Zs:
@@ -243,7 +244,7 @@ def split_concepts(config, save_path, initial_models, datasets):
                 best_score = score
                 best_n_clusters = n
 
-        cluster_labels, _ = turtle.run_turtle(
+        cluster_labels, _, _ = turtle.run_turtle(
             Zs=Zs, k=best_n_clusters, warm_start=config["warm_start"], epochs=config["turtle_epochs"])
         clusters = np.unique(cluster_labels)
 
@@ -266,13 +267,7 @@ def split_concepts(config, save_path, initial_models, datasets):
                 axis=1)
             discovered_concept_semantics.append(discovered_concept_name)
             discovered_concept_roc_aucs.append(roc_auc)
-            n_discovered_concepts += 1
-            if n_discovered_concepts == config["max_concepts_to_discover"]:
-                break
-        else:
-            continue
-        break
-
+            n_discovered_subconcepts[concept_idx] += 1
 
     np.savez(save_path / "discovered_concepts.npz",
         discovered_concept_labels=discovered_concept_labels,
@@ -281,16 +276,20 @@ def split_concepts(config, save_path, initial_models, datasets):
 
     with (save_path / "results.yaml").open("a") as f:
         yaml.safe_dump({
-            "n_discovered_concepts": int(n_discovered_concepts),
+            "n_discovered_subconcepts": n_discovered_subconcepts,
             "discovered_concept_semantics": list(map(str, discovered_concept_semantics)),
             "discovered_concept_roc_aucs": list(map(float, discovered_concept_roc_aucs)),
         }, f)
 
     if config["use_wandb"]:
         wandb.log({
-            "n_discovered_concepts": n_discovered_concepts,
+            "n_discovered_subconcepts": n_discovered_subconcepts,
             "discovered_concept_semantics": discovered_concept_semantics,
             "discovered_concept_roc_aucs": discovered_concept_roc_aucs,
         })
 
-    return discovered_concept_labels, discovered_concept_train_ground_truth, discovered_concept_test_ground_truth, discovered_concept_roc_aucs
+    return (discovered_concept_labels,
+            discovered_concept_train_ground_truth,
+            discovered_concept_test_ground_truth,
+            discovered_concept_roc_aucs,
+            n_discovered_subconcepts)
