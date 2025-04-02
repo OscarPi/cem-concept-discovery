@@ -100,8 +100,7 @@ def train_cem(
     return model, test_results
 
 def train_hicem(
-        n_top_concepts,
-        n_sub_concepts,
+        sub_concepts,
         n_tasks,
         pre_concept_model,
         latent_representation_size,
@@ -114,14 +113,14 @@ def train_hicem(
         use_concept_loss_weights=False):
     task_class_weights = None
     concept_loss_weights = None
-    n_concepts = n_top_concepts + sum(n_sub_concepts)
+    n_concepts = len(sub_concepts) + sum(map(sum, sub_concepts))
     if use_task_class_weights:
         task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
     if use_concept_loss_weights:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
+
     model = HierarchicalConceptEmbeddingModel(
-        n_top_concepts=n_top_concepts,
-        n_sub_concepts=n_sub_concepts,
+        sub_concepts=sub_concepts,
         n_tasks=n_tasks,
         pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,

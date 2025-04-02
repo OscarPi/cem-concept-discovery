@@ -171,7 +171,10 @@ def test_concept_interventions(
     if provided_concepts_removed:
         discovered_concepts = range(n_discovered_concepts)
     else:
-        discovered_concepts = range(n_provided_concepts, n_provided_concepts + n_discovered_concepts)
+        discovered_concepts = list(range(n_provided_concepts, n_provided_concepts + n_discovered_concepts))
+        # for i in reversed(range(n_discovered_concepts)):
+        #     if np.all(np.isnan(discovered_concept_test_ground_truth[:, i])):
+        #         del discovered_concepts[i]
 
     for dataset, model in zip(datasets, models_with_discovered_concepts):
         model_name = (dataset.foundation_model or 'basic') + "hicem"
@@ -225,11 +228,14 @@ def run_experiment(run_dir, config):
 
     pre_concept_model = make_pre_concept_model(config)
 
-    initial_models, test_results = get_initial_models(config, datasets, run_dir)
+    if not config["cluster_representations"]:
+        initial_models, test_results = get_initial_models(config, datasets, run_dir)
 
-    for dataset, test_result in zip(datasets, test_results):
-        model_results = get_accuracies(test_result, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
-        log(model_results)
+        for dataset, test_result in zip(datasets, test_results):
+            model_results = get_accuracies(test_result, dataset.n_concepts, f"initial_{dataset.foundation_model or 'basic'}cem")
+            log(model_results)
+    else:
+        initial_models = []
 
     # for dataset, model in zip(datasets, initial_models):
     #     log(calculate_c_pred_percentiles(model, f"initial_{dataset.foundation_model or 'basic'}cem", dataset.train_dl()))
@@ -238,26 +244,26 @@ def run_experiment(run_dir, config):
      discovered_concept_train_ground_truth,
      discovered_concept_test_ground_truth,
      discovered_concept_roc_aucs,
-     n_discovered_subconcepts) = cemcd.concept_discovery.split_concepts(
+     n_discovered_sub_concepts) = cemcd.concept_discovery.split_concepts(
         config=config,
         save_path=run_dir,
         initial_models=initial_models,
         datasets=datasets,
-        concepts_to_split=[0, 1, 2]) #range(datasets[0].n_concepts)) TODO: CHANGE
-    n_discovered_concepts = sum(n_discovered_subconcepts)
+        concepts_to_split=[0, 1]) #range(datasets[0].n_concepts)) TODO: CHANGE
+    n_discovered_concepts = sum(n_discovered_sub_concepts)
 
+    sub_concepts = list(map(lambda n: (n, 0), n_discovered_sub_concepts)) # TODO TODO TODO: SPLIT NEGATIVE EMBEDDINGS AS WELL
     models_with_discovered_concepts = []
     for dataset in datasets:
         model, test_results = train_hicem(
-            n_top_concepts=datasets[0].n_concepts,
-            n_sub_concepts=n_discovered_subconcepts,
+            sub_concepts=sub_concepts,
             n_tasks=dataset.n_tasks,
             pre_concept_model=pre_concept_model if dataset.foundation_model is None else None,
             latent_representation_size=dataset.latent_representation_size or list(pre_concept_model.modules())[-1].out_features,
             train_dl=dataset.train_dl(discovered_concept_labels),
             val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_concepts), np.nan)),
             test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-            save_path=run_dir / f"enhanced_{dataset.foundation_model or 'basic'}cem.pth",
+            save_path=run_dir / f"enhanced_{dataset.foundation_model or 'basic'}hicem.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],
             use_concept_loss_weights=config["use_concept_loss_weights"])

@@ -209,10 +209,20 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
 
     predictions = []
     embeddings = []
-    for dataset, model in zip(datasets, initial_models):
-        c_pred, c_embs, _ = calculate_embeddings(model, dataset.train_dl())
-        predictions.append(c_pred)
-        embeddings.append(c_embs)
+    if config["cluster_representations"]:
+        for dataset in datasets:
+            concept_labels = np.zeros((0, dataset.n_concepts), dtype=np.float32)
+            representations = np.zeros((0, dataset.latent_representation_size), dtype=np.float32)
+            for x, _, c in dataset.train_dl():
+                representations = np.concatenate((representations, x.cpu().detach().numpy()), axis=0)
+                concept_labels = np.concatenate((concept_labels, c.cpu().detach().numpy()), axis=0)
+            predictions.append(concept_labels)
+            embeddings.append(representations)
+    else:
+        for dataset, model in zip(datasets, initial_models):
+            c_pred, c_embs, _ = calculate_embeddings(model, dataset.train_dl())
+            predictions.append(c_pred)
+            embeddings.append(c_embs)
     predictions = np.stack(predictions, axis=0)
 
     discovered_concept_labels = np.zeros((train_dataset_size, 0))
@@ -220,15 +230,18 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
     discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
     discovered_concept_semantics = []
     discovered_concept_roc_aucs = []
-    # turtle_classifiers = []
     n_discovered_subconcepts = [0] * predictions.shape[2]
+    n_duplicates = 0
 
     for concept_idx in tqdm(concepts_to_split):
         sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0)
 
         Zs = []
         for e in embeddings:
-            Zs.append(e[:, concept_idx][sample_filter])
+            if config["cluster_representations"]:
+                Zs.append(e[sample_filter])
+            else:
+                Zs.append(e[:, concept_idx][sample_filter])
 
         best_score = - len(Zs)
         best_n_clusters = None
@@ -256,18 +269,24 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
 
             discovered_concept_name = datasets[0].concept_names[matching_concept_idx]
 
-            discovered_concept_labels = np.concatenate(
-                (discovered_concept_labels, np.expand_dims(labels, axis=1)),
-                axis=1)
-            discovered_concept_train_ground_truth = np.concatenate(
-                (discovered_concept_train_ground_truth, np.expand_dims(datasets[0].concept_bank[:, matching_concept_idx], axis=1)),
-                axis=1)
-            discovered_concept_test_ground_truth = np.concatenate(
-                (discovered_concept_test_ground_truth, np.expand_dims(datasets[0].concept_test_ground_truth[:, matching_concept_idx], axis=1)),
-                axis=1)
-            discovered_concept_semantics.append(discovered_concept_name)
-            discovered_concept_roc_aucs.append(roc_auc)
-            n_discovered_subconcepts[concept_idx] += 1
+            if discovered_concept_name in discovered_concept_semantics:
+                idx = discovered_concept_semantics.index(discovered_concept_name)
+                discovered_concept_labels[:, idx] = discovered_concept_labels[:, idx] + labels
+                discovered_concept_roc_aucs[idx] = sklearn.metrics.roc_auc_score(discovered_concept_train_ground_truth[:, idx], discovered_concept_labels[:, idx])
+                n_duplicates += 1
+            else:
+                discovered_concept_labels = np.concatenate(
+                    (discovered_concept_labels, np.expand_dims(labels, axis=1)),
+                    axis=1)
+                discovered_concept_train_ground_truth = np.concatenate(
+                    (discovered_concept_train_ground_truth, np.expand_dims(datasets[0].concept_bank[:, matching_concept_idx], axis=1)),
+                    axis=1)
+                discovered_concept_test_ground_truth = np.concatenate(
+                    (discovered_concept_test_ground_truth, np.expand_dims(datasets[0].concept_test_ground_truth[:, matching_concept_idx], axis=1)),
+                    axis=1)
+                discovered_concept_semantics.append(discovered_concept_name)
+                discovered_concept_roc_aucs.append(roc_auc)
+                n_discovered_subconcepts[concept_idx] += 1
 
     np.savez(save_path / "discovered_concepts.npz",
         discovered_concept_labels=discovered_concept_labels,
@@ -279,6 +298,7 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
             "n_discovered_subconcepts": n_discovered_subconcepts,
             "discovered_concept_semantics": list(map(str, discovered_concept_semantics)),
             "discovered_concept_roc_aucs": list(map(float, discovered_concept_roc_aucs)),
+            "n_duplicates": n_duplicates
         }, f)
 
     if config["use_wandb"]:
@@ -286,6 +306,7 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
             "n_discovered_subconcepts": n_discovered_subconcepts,
             "discovered_concept_semantics": discovered_concept_semantics,
             "discovered_concept_roc_aucs": discovered_concept_roc_aucs,
+            "n_duplicates": n_duplicates
         })
 
     return (discovered_concept_labels,
