@@ -189,11 +189,10 @@ def load_cem(
 def train_cbm(
         n_concepts,
         n_tasks,
-        concept_model,
+        latent_representation_size,
         train_dl,
         val_dl,
         test_dl,
-        black_box=False,
         save_path=None,
         max_epochs=300,
         use_task_class_weights=False,
@@ -202,16 +201,15 @@ def train_cbm(
     concept_loss_weights = None
     if use_task_class_weights:
         task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
-    if not black_box and use_concept_loss_weights:
+    if use_concept_loss_weights:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
 
     model = ConceptBottleneckModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
-        concept_model=concept_model,
+        latent_representation_size=latent_representation_size,
         task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights,
-        black_box=black_box
     )
 
     trainer = lightning.Trainer(

@@ -27,7 +27,6 @@ class BlackBoxModel(lightning.LightningModule):
         predicted_labels = self.model(x)
         return predicted_labels
 
-
     def run_step(self, batch):
         x, y, _ = batch
 

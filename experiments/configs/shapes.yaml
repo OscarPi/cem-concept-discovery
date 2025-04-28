@@ -1,16 +1,9 @@
-description: MNIST_ADD concept splitting run
-dataset: mnist_add
+description: SHAPES concept splitting run
+dataset: shapes
 dataset_dir: /datasets
 model_dir: /checkpoints
 results_dir: results/
-mnist_config:
-  n_digits: 2
-  max_digit: 6
-pre_concept_model: cnn
-pre_concept_cnn_config:
-  width: 28
-  height: 28
-  channels: 2
+pre_concept_model: resnet34
 cluster_representations: False
 max_epochs: 300
 min_n_clusters: 2
@@ -21,6 +14,6 @@ foundation_models:
 use_wandb: True
 warm_start: True
 turtle_epochs: 1000
-use_task_class_weights: True
-use_concept_loss_weights: True
+use_task_class_weights: False
+use_concept_loss_weights: False
 only_discover_subconcepts: True

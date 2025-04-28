@@ -1,16 +1,14 @@
-import copy
 import torch
 from cemcd.models import base
 
 class ConceptBottleneckModel(base.BaseModel):
-    def __init__(self, n_concepts, n_tasks, concept_model, task_class_weights, concept_loss_weights, black_box=False):
+    def __init__(self, n_concepts, n_tasks, latent_representation_size, task_class_weights, concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
-        self.concept_model = copy.deepcopy(concept_model)
         self.concept_loss_weight = 10
-        self.black_box = black_box
-        if black_box:
-            self.concept_loss_weight = 0
+
+        # Representations from the foundation model are precomputed and passed in the dataset.
+        self.concept_model = torch.nn.Linear(latent_representation_size, self.n_concepts)
 
         self.label_predictor = torch.nn.Sequential(
             torch.nn.Linear(self.n_concepts, 128),
@@ -55,9 +53,6 @@ class ConceptBottleneckModel(base.BaseModel):
         else:
             concept_probs_after_interventions = predicted_concept_probs
 
-        if self.black_box:
-            predicted_labels = self.label_predictor(predicted_concept_logits)
-        else:
-            predicted_labels = self.label_predictor(concept_probs_after_interventions)
+        predicted_labels = self.label_predictor(concept_probs_after_interventions)
 
         return predicted_concept_probs, predicted_labels

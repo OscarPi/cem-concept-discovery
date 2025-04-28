@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
     cache_dir = Path(config["cache_dir"])
-#    cache_dir.mkdir()
+    cache_dir.mkdir()
 
     datasets = load_datasets(config)
 
