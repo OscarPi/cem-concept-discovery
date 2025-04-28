@@ -89,4 +89,4 @@ if __name__ == "__main__":
             config=config,
             notes="Baseline run")
 
-    run_baselines(args.results_dir, config)
+    run_baselines(config)
