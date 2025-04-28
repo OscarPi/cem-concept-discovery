@@ -20,7 +20,7 @@ def run_baselines(config):
 
     datasets = load_datasets(config)
 
-    results_dir = Path(config["results_dir"]) / f"{config["dataset"]}_baselines"
+    results_dir = Path(config["results_dir"]) / f"{config['dataset']}_baselines"
     results_dir.mkdir(exist_ok=True)
     for run_number in range(1, 11):
         if (results_dir / f"baseline_results_{run_number}.yaml").exists():
