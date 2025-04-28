@@ -1,8 +1,8 @@
 description: MNIST_ADD concept splitting run
 dataset: mnist_add
-dataset_dir: /datasets
-model_dir: /checkpoints
-results_dir: results/
+dataset_dir: /homes/ogh22/datasets
+model_dir: /homes/ogh22/checkpoints
+results_dir: /homes/ogh22/results
 mnist_config:
   n_digits: 2
   max_digit: 6

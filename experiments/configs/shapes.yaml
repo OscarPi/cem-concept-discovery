@@ -1,8 +1,8 @@
 description: SHAPES concept splitting run
 dataset: shapes
-dataset_dir: /datasets
-model_dir: /checkpoints
-results_dir: results/
+dataset_dir: /homes/ogh22/datasets
+model_dir: /homes/ogh22/checkpoints
+results_dir: /homes/ogh22/results
 pre_concept_model: resnet34
 cluster_representations: False
 max_epochs: 300
