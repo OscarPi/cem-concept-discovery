@@ -54,20 +54,12 @@ if __name__ == "__main__":
         use_concept_loss_weights=False
     )
 
-    print(f"{dataset.foundation_model}_cbm_concept_interventions_one_at_a_time")
-    results = get_intervention_accuracies(
-        model=cbm,
-        test_dl=dataset.test_dl(),
-        concepts_to_intervene=range(dataset.n_concepts),
-        one_at_a_time=True
-    )
-    print(",".join(map(str, results)))
-
-    print(f"{dataset.foundation_model}_cbm_concept_interventions_cumulative")
     results = get_intervention_accuracies(
         model=cbm,
         test_dl=dataset.test_dl(),
         concepts_to_intervene=range(dataset.n_concepts),
         one_at_a_time=False
     )
+
+    print(f"{dataset.foundation_model}_cbm_concept_interventions_cumulative")
     print(",".join(map(str, results)))
