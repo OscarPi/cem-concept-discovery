@@ -4,7 +4,7 @@ import yaml
 import wandb
 import torch
 from cemcd.training import train_cbm, train_black_box
-from experiment_utils import load_config, load_datasets
+from experiment_utils import load_config, load_datasets, get_intervention_accuracies
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -42,7 +42,7 @@ def run_baselines(config):
         return
 
     for dataset in datasets:
-        _, cbm_test_results = train_cbm(
+        cbm, cbm_test_results = train_cbm(
             n_concepts=dataset.n_concepts,
             n_tasks=dataset.n_tasks,
             latent_representation_size=dataset.latent_representation_size,
@@ -55,6 +55,18 @@ def run_baselines(config):
             use_concept_loss_weights=config["use_concept_loss_weights"])
         cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
         cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
+        results[f"{dataset.foundation_model}_cbm_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+            model=cbm,
+            test_dl=dataset.test_dl(),
+            concepts_to_intervene=range(dataset.n_concepts),
+            one_at_a_time=True
+        )
+        results[f"{dataset.foundation_model}_cbm_concept_interventions_cumulative"] = get_intervention_accuracies(
+            model=cbm,
+            test_dl=dataset.test_dl(),
+            concepts_to_intervene=range(dataset.n_concepts),
+            one_at_a_time=False
+        )
         results.update({
             f"{dataset.foundation_model}_cbm_task_accuracy": float(cbm_task_accuracy),
             f"{dataset.foundation_model}_cbm_concept_auc": float(cbm_concept_auc)

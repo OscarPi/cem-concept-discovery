@@ -236,6 +236,39 @@ def train_cbm(
 
     return model, test_results
 
+def load_cbm(
+        n_concepts,
+        n_tasks,
+        latent_representation_size,
+        train_dl,
+        test_dl,
+        path,
+        use_task_class_weights=False,
+        use_concept_loss_weights=False):
+    task_class_weights = None
+    concept_loss_weights = None
+    if use_task_class_weights:
+        task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
+    if use_concept_loss_weights:
+        concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
+
+    model = ConceptBottleneckModel(
+        n_concepts=n_concepts,
+        n_tasks=n_tasks,
+        latent_representation_size=latent_representation_size,
+        task_class_weights=task_class_weights,
+        concept_loss_weights=concept_loss_weights,
+    )
+
+    trainer = lightning.Trainer()
+
+    model.load_state_dict(torch.load(path))
+
+    model.freeze()
+    [test_results] = trainer.test(model, test_dl)
+
+    return model, test_results
+
 def train_black_box(
         n_tasks,
         latent_representation_size,

@@ -1,6 +1,7 @@
 from pathlib import Path
 import yaml
 import torch
+import lightning
 from torchvision.models import resnet34
 from cemcd.models.pre_concept_models import get_pre_concept_model
 from cemcd.data import awa, cub, dsprites, mnist, celeba, shapes
@@ -125,3 +126,25 @@ def get_initial_models(config, datasets, run_dir):
         models.append(model)
         test_results.append(test_result)
     return models, test_results
+
+def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_time):
+    trainer = lightning.Trainer()
+
+    # c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, train_dl)
+    # model.intervention_on_value = torch.from_numpy(np.percentile(c_pred, 95, axis=0))
+    # model.intervention_off_value = torch.from_numpy(np.percentile(c_pred, 5, axis=0))
+    # print(f"{model_name} interventions on value: {model.intervention_on_value}")
+    # print(f"{model_name} interventions off value: {model.intervention_off_value}")
+
+    intervention_accuracies = []
+    model.intervention_mask = torch.tensor([0] * model.n_concepts)
+    [test_results] = trainer.test(model, test_dl)
+    initial_task_accuracy = test_results["test_y_accuracy"]
+    for c in concepts_to_intervene:
+        if one_at_a_time:
+            model.intervention_mask = torch.tensor([0] * model.n_concepts)
+        model.intervention_mask[c] = 1
+        [test_results] = trainer.test(model, test_dl)
+        accuracy_difference = round(test_results["test_y_accuracy"] - initial_task_accuracy, 4)
+        intervention_accuracies.append(accuracy_difference)
+    return intervention_accuracies
