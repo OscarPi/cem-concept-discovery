@@ -4,7 +4,7 @@ import torch
 import lightning
 from torchvision.models import resnet34
 from cemcd.models.pre_concept_models import get_pre_concept_model
-from cemcd.data import awa, cub, dsprites, mnist, celeba, shapes
+from cemcd.data import awa, cub, dsprites, mnist, celeba, shapes, cifar100
 from cemcd.training import train_cem, load_cem
 
 def load_config(config_file):
@@ -65,6 +65,15 @@ def load_datasets(config):
         for foundation_model in config["foundation_models"]:
             print(f"Running foundation model {foundation_model}.")
             datasets.append(celeba.CELEBADatasets(
+                foundation_model=foundation_model,
+                dataset_dir=config["dataset_dir"],
+                model_dir=config["model_dir"]))
+        return datasets
+    elif config["dataset"] == "cifar100":
+        datasets = []
+        for foundation_model in config["foundation_models"]:
+            print(f"Running foundation model {foundation_model}.")
+            datasets.append(cifar100.CIFARDatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
                 model_dir=config["model_dir"]))
