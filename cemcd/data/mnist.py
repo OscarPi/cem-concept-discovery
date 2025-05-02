@@ -73,15 +73,21 @@ class MNISTDatasets(Datasets):
         self.test_samples, self.test_labels = create_addition_set(x_test, y_test, n_digits, selected_digits, 10000)
 
         def data_getter(samples, labels):
+            transform = torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
+
             def getter(idx):
+                img = torchvision.transforms.ToTensor()(samples[idx])
+                img = torch.cat((img[0], img[1]))
+                img = torch.repeat_interleave(img[torch.newaxis, ...], 3, dim=0)
+                img = transform(img)
                 return (
-                    torchvision.transforms.ToTensor()(samples[idx]),
+                    img,
                     np.sum(labels[idx]),
                     torch.tensor(labels[idx] > (max_digit / 2), dtype=torch.float32))
             getter.length = len(samples)
             return getter
 
-        representation_cache_dir = Path(dataset_dir) / "MNIST" / f"{n_digits}-{max_digit}"
+        representation_cache_dir = Path(dataset_dir) / "MNIST" / f"cache_{n_digits}-{max_digit}"
         representation_cache_dir.mkdir(exist_ok=True)
         super().__init__(
             train_getter=data_getter(self.train_samples, self.train_labels),
@@ -116,52 +122,3 @@ class MNISTDatasets(Datasets):
 
         self.n_concepts = n_digits
         self.n_tasks = max_digit * n_digits + 1
-
-        if foundation_model == "dinov2":
-            self.latent_representation_size = n_digits * 1536
-        elif foundation_model == "clip":
-            self.latent_representation_size = n_digits * 768
-        else:
-            self.latent_representation_size = None
-
-    def run_foundation_model(self, img_transform, model_dir, data_getter, device):
-        if self.foundation_model == "dinov2":
-            torch.hub.set_dir(Path(model_dir) / "dinov2")
-            model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14').to(device)
-            model.eval()
-            transform = transforms.default_transforms
-        elif self.foundation_model == "clip":
-            ckpt_dir = Path(model_dir) / "clip"
-            model, transform = clip.load("ViT-L/14", device=device, download_root=ckpt_dir)
-            model.eval()
-            model = model.encode_image
-            transform.transforms[2] = transforms._convert_image_to_rgb
-            transform.transforms[3] = transforms._safe_to_tensor
-        else:
-            raise ValueError(f"Unrecognised foundation model: {model}.")
-
-        if img_transform is not None:
-            transform = img_transform
-
-        pre_transform = torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
-
-        xs = []
-        ys = []
-        cs = []
-        with torch.no_grad():
-            for i in trange(data_getter.length):
-                imgs, y, c = data_getter(i)
-
-                x_full = []
-                for j in range(imgs.shape[0]):
-                    img = imgs[j]
-                    img = torch.repeat_interleave(img[torch.newaxis, ...], 3, dim=0)
-                    img = transform(pre_transform(img))
-                    img = img[torch.newaxis, ...].to(device)
-                    x = model(img).detach().cpu().squeeze().float()
-                    x_full.append(x)
-
-                xs.append(torch.concatenate(x_full))
-                ys.append(y)
-                cs.append(c)
-        return torch.stack(xs), torch.tensor(ys), torch.stack(cs)

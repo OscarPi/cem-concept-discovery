@@ -292,50 +292,50 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
                 n_discovered_sub_concepts[concept_idx] += 1
 
     n_discovered_top_concepts = 0
-    if not config["only_discover_subconcepts"]:
-        n_discovered_sub_concepts = [0] * datasets[0].n_concepts
-        discovered_sub_concept_labels = np.zeros((train_dataset_size, 0))
-        discovered_sub_concept_train_ground_truth = np.zeros((train_dataset_size, 0))
-        discovered_sub_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
-        discovered_sub_concept_semantics = []
-        discovered_sub_concept_roc_aucs = []
-        discovered_concepts_remaining = list(range(discovered_concept_labels.shape[1]))
+    # if not config["only_discover_subconcepts"]:
+    #     n_discovered_sub_concepts = [0] * datasets[0].n_concepts
+    #     discovered_sub_concept_labels = np.zeros((train_dataset_size, 0))
+    #     discovered_sub_concept_train_ground_truth = np.zeros((train_dataset_size, 0))
+    #     discovered_sub_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
+    #     discovered_sub_concept_semantics = []
+    #     discovered_sub_concept_roc_aucs = []
+    #     discovered_concepts_remaining = list(range(discovered_concept_labels.shape[1]))
 
-        for provided_concept_idx in range(datasets[0].n_concepts):
-            for i in reversed(range(len(discovered_concepts_remaining))):
-                discovered_concept_idx = discovered_concepts_remaining[i]
-                matching_concept_idx = datasets[0].concept_names.index(discovered_concept_semantics[discovered_concept_idx])
-                if matching_concept_idx in datasets[0].sub_concept_map[provided_concept_idx]:
-                    discovered_sub_concept_labels = np.concatenate(
-                        (discovered_sub_concept_labels, discovered_concept_labels[:, discovered_concept_idx:discovered_concept_idx+1]),
-                        axis=1)
-                    discovered_sub_concept_train_ground_truth = np.concatenate(
-                        (discovered_sub_concept_train_ground_truth, discovered_concept_train_ground_truth[:, discovered_concept_idx:discovered_concept_idx+1]),
-                        axis=1)
-                    discovered_sub_concept_test_ground_truth = np.concatenate(
-                        (discovered_sub_concept_test_ground_truth, discovered_concept_test_ground_truth[:, discovered_concept_idx:discovered_concept_idx+1]),
-                        axis=1)
-                    discovered_sub_concept_semantics.append(discovered_concept_semantics[discovered_concept_idx])
-                    discovered_sub_concept_roc_aucs.append(discovered_concept_roc_aucs[discovered_concept_idx])
-                    n_discovered_sub_concepts[provided_concept_idx] += 1
-                    del discovered_concepts_remaining[i]
+    #     for provided_concept_idx in range(datasets[0].n_concepts):
+    #         for i in reversed(range(len(discovered_concepts_remaining))):
+    #             discovered_concept_idx = discovered_concepts_remaining[i]
+    #             matching_concept_idx = datasets[0].concept_names.index(discovered_concept_semantics[discovered_concept_idx])
+    #             if matching_concept_idx in datasets[0].sub_concept_map[provided_concept_idx]:
+    #                 discovered_sub_concept_labels = np.concatenate(
+    #                     (discovered_sub_concept_labels, discovered_concept_labels[:, discovered_concept_idx:discovered_concept_idx+1]),
+    #                     axis=1)
+    #                 discovered_sub_concept_train_ground_truth = np.concatenate(
+    #                     (discovered_sub_concept_train_ground_truth, discovered_concept_train_ground_truth[:, discovered_concept_idx:discovered_concept_idx+1]),
+    #                     axis=1)
+    #                 discovered_sub_concept_test_ground_truth = np.concatenate(
+    #                     (discovered_sub_concept_test_ground_truth, discovered_concept_test_ground_truth[:, discovered_concept_idx:discovered_concept_idx+1]),
+    #                     axis=1)
+    #                 discovered_sub_concept_semantics.append(discovered_concept_semantics[discovered_concept_idx])
+    #                 discovered_sub_concept_roc_aucs.append(discovered_concept_roc_aucs[discovered_concept_idx])
+    #                 n_discovered_sub_concepts[provided_concept_idx] += 1
+    #                 del discovered_concepts_remaining[i]
         
-        n_discovered_top_concepts = len(discovered_concepts_remaining)
-        discovered_concept_labels = np.concatenate(
-            (discovered_concept_labels[:, discovered_concepts_remaining], discovered_sub_concept_labels),
-            axis=1
-        )
-        discovered_concept_train_ground_truth = np.concatenate(
-            (discovered_concept_train_ground_truth[:, discovered_concepts_remaining], discovered_sub_concept_train_ground_truth),
-            axis=1)
-        discovered_concept_test_ground_truth = np.concatenate(
-            (discovered_concept_test_ground_truth[:, discovered_concepts_remaining], discovered_sub_concept_test_ground_truth),
-            axis=1)
-        for discovered_concept_idx in reversed(discovered_concepts_remaining):
-            discovered_sub_concept_semantics.insert(0, discovered_concept_semantics[discovered_concept_idx])
-            discovered_sub_concept_roc_aucs.insert(0, discovered_concept_roc_aucs[discovered_concept_idx])
-        discovered_concept_semantics = discovered_sub_concept_semantics
-        discovered_concept_roc_aucs = discovered_sub_concept_roc_aucs
+    #     n_discovered_top_concepts = len(discovered_concepts_remaining)
+    #     discovered_concept_labels = np.concatenate(
+    #         (discovered_concept_labels[:, discovered_concepts_remaining], discovered_sub_concept_labels),
+    #         axis=1
+    #     )
+    #     discovered_concept_train_ground_truth = np.concatenate(
+    #         (discovered_concept_train_ground_truth[:, discovered_concepts_remaining], discovered_sub_concept_train_ground_truth),
+    #         axis=1)
+    #     discovered_concept_test_ground_truth = np.concatenate(
+    #         (discovered_concept_test_ground_truth[:, discovered_concepts_remaining], discovered_sub_concept_test_ground_truth),
+    #         axis=1)
+    #     for discovered_concept_idx in reversed(discovered_concepts_remaining):
+    #         discovered_sub_concept_semantics.insert(0, discovered_concept_semantics[discovered_concept_idx])
+    #         discovered_sub_concept_roc_aucs.insert(0, discovered_concept_roc_aucs[discovered_concept_idx])
+    #     discovered_concept_semantics = discovered_sub_concept_semantics
+    #     discovered_concept_roc_aucs = discovered_sub_concept_roc_aucs
 
     np.savez(save_path / "discovered_concepts.npz",
         discovered_concept_labels=discovered_concept_labels,
