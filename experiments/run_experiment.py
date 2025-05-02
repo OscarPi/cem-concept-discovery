@@ -259,7 +259,7 @@ def run_experiment(run_dir, config):
         save_path=run_dir,
         initial_models=initial_models,
         datasets=datasets,
-        concepts_to_split=range(datasets[0].n_concepts))
+        concepts_to_split=range(4))#range(datasets[0].n_concepts)) TODO
     n_discovered_concepts = discovered_concept_labels.shape[1]
     n_discovered_top_concepts = n_discovered_concepts - sum(n_discovered_sub_concepts)
 
