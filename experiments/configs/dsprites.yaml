@@ -1,4 +1,4 @@
-description: dSprites run
+description: dSprites concept splitting run
 dataset: dsprites
 dataset_dir: /datasets
 model_dir: /checkpoints
@@ -15,10 +15,10 @@ foundation_models:
   - clip
 minimum_cluster_size: 0.01
 results_dir: results/
-use_wandb: True
+use_wandb: False
 max_concepts_to_discover: 20
 match_threshold: 0
 warm_start: True
-turtle_epochs: 6000
+turtle_epochs: 1000
 use_task_class_weights: False
 use_concept_loss_weights: False

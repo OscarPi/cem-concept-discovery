@@ -1,8 +1,8 @@
 description: MNIST_ADD concept splitting run
 dataset: mnist_add
-dataset_dir: /homes/ogh22/datasets
-model_dir: /homes/ogh22/checkpoints
-results_dir: /homes/ogh22/results
+dataset_dir: /datasets
+model_dir: /checkpoints
+results_dir: results/
 mnist_config:
   n_digits: 2
   max_digit: 6
@@ -24,3 +24,4 @@ turtle_epochs: 1000
 use_task_class_weights: True
 use_concept_loss_weights: True
 only_discover_subconcepts: True
+cluster_by_class: False

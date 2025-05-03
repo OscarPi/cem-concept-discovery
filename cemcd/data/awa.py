@@ -143,6 +143,13 @@ SUPER_CONCEPTS = {
 SUB_CONCEPT_NAMES = sorted(SUPER_CONCEPTS.keys())
 SUB_CONCEPT_INDICES = [SELECTED_CONCEPT_SEMANTICS.index(c) for c in SUB_CONCEPT_NAMES]
 
+SUB_CONCEPT_MAP = []
+for _ in range(len(SUPER_CONCEPT_NAMES)):
+    SUB_CONCEPT_MAP.append([])
+for sub_concept_name, super_concept_name in SUPER_CONCEPTS.items():
+    super_concept_index = SUPER_CONCEPT_NAMES.index(super_concept_name)
+    SUB_CONCEPT_MAP[super_concept_index].append(SUB_CONCEPT_NAMES.index(sub_concept_name))
+
 class AwADatasets(Datasets):
     def __init__(
             self,
@@ -211,12 +218,9 @@ class AwADatasets(Datasets):
         self.concept_bank = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], train_data)))
         self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], test_data)))
 
-        self.sub_concept_map = [[] * len(SUPER_CONCEPT_NAMES)]
-        for sub_concept_name, super_concept_name in SUPER_CONCEPTS.items():
-            super_concept_index = SUPER_CONCEPT_NAMES.index(super_concept_name)
-            self.sub_concept_map[super_concept_index].append(SUB_CONCEPT_NAMES.index(sub_concept_name))
 
         self.concept_names = SUB_CONCEPT_NAMES
 
+        self.sub_concept_map = SUB_CONCEPT_MAP
         self.n_concepts = len(SELECTED_CONCEPT_SEMANTICS) - len(SUB_CONCEPT_NAMES) + len(SUPER_CONCEPT_NAMES)
         self.n_tasks = N_CLASSES
