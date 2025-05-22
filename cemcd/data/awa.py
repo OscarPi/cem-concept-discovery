@@ -115,6 +115,41 @@ SELECTED_CONCEPT_SEMANTICS = [
     "quadrapedal"
 ]
 
+SUPER_CONCEPT_NAMES = [
+    "patterned",
+    "distal_limb",
+    "teeth",
+    "weapons",
+]
+
+SUPER_CONCEPTS = {
+    "patches": "patterned",
+    "spots": "patterned",
+    "stripes": "patterned",
+    "flippers": "distal_limb",
+    "hands": "distal_limb",
+    "hooves": "distal_limb",
+    "pads": "distal_limb",
+    "paws": "distal_limb",
+    "chewteeth": "teeth",
+    "meatteeth": "teeth",
+    "buckteeth": "teeth",
+    "strainteeth": "teeth",
+    "horns": "weapons",
+    "claws": "weapons",
+    "tusks": "weapons",
+}
+
+SUB_CONCEPT_NAMES = sorted(SUPER_CONCEPTS.keys())
+SUB_CONCEPT_INDICES = [SELECTED_CONCEPT_SEMANTICS.index(c) for c in SUB_CONCEPT_NAMES]
+
+SUB_CONCEPT_MAP = []
+for _ in range(len(SUPER_CONCEPT_NAMES)):
+    SUB_CONCEPT_MAP.append([])
+for sub_concept_name, super_concept_name in SUPER_CONCEPTS.items():
+    super_concept_index = SUPER_CONCEPT_NAMES.index(super_concept_name)
+    SUB_CONCEPT_MAP[super_concept_index].append(SUB_CONCEPT_NAMES.index(sub_concept_name))
+
 class AwADatasets(Datasets):
     def __init__(
             self,
@@ -137,9 +172,28 @@ class AwADatasets(Datasets):
                 image = Image.open(image_path).convert("RGB")
                 class_label = example["class_label"]
                 attr_label = example["attribute_label"]
-                attr_label = attr_label[:5]
+                super_concepts = {
+                    "patterned": 0,
+                    "distal_limb": 0,
+                    "teeth": 0,
+                    "weapons": 0
+                }
+                non_super_concepts = []
+                for i, concept_name in enumerate(SELECTED_CONCEPT_SEMANTICS):
+                    if concept_name in SUPER_CONCEPTS:
+                        super_concept_name = SUPER_CONCEPTS[concept_name]
+                        if attr_label[i] == 1:
+                            super_concepts[super_concept_name] = 1
+                    else:
+                        non_super_concepts.append(attr_label[i])
+                concept_annotations = [
+                    super_concepts["patterned"],
+                    super_concepts["distal_limb"],
+                    super_concepts["teeth"],
+                    super_concepts["weapons"]
+                ] + non_super_concepts
 
-                return image, class_label, torch.tensor(attr_label, dtype=torch.float32)
+                return image, class_label, torch.tensor(concept_annotations, dtype=torch.float32)
             getter.length = len(data)
             return getter
 
@@ -156,16 +210,16 @@ class AwADatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=train_img_transform,
             val_test_img_transform=val_test_img_transform,
-            dataset_dir=dataset_dir / "AwA2",
+            representation_cache_dir=dataset_dir / "AwA2",
             model_dir=model_dir,
             device=device
         )
 
-        train_concepts = np.array(list(map(lambda d: d["attribute_label"], train_data)))
-        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
-        test_concepts = np.array(list(map(lambda d: d["attribute_label"], test_data)))
-        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
-        self.concept_names = SELECTED_CONCEPT_SEMANTICS + list(map(lambda s: "NOT " + s, SELECTED_CONCEPT_SEMANTICS))
+        self.concept_bank = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], train_data)))
+        self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], test_data)))
 
-        self.n_concepts = 5
+        self.concept_names = SUB_CONCEPT_NAMES
+
+        self.sub_concept_map = SUB_CONCEPT_MAP
+        self.n_concepts = len(SELECTED_CONCEPT_SEMANTICS) - len(SUB_CONCEPT_NAMES) + len(SUPER_CONCEPT_NAMES)
         self.n_tasks = N_CLASSES

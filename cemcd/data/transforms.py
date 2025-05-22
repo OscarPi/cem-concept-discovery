@@ -17,7 +17,7 @@ def _safe_to_tensor(x):
     else:
         return torchvision.transforms.ToTensor()(x)
 
-default_transforms = torchvision.transforms.Compose([
+dino_transforms = torchvision.transforms.Compose([
     torchvision.transforms.Resize((256, 256), interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
     torchvision.transforms.CenterCrop(224),
     _convert_image_to_rgb,

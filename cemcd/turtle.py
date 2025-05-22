@@ -71,4 +71,4 @@ def run_turtle(Zs, k, warm_start=False, gamma=10., epochs=6000):
     labels, _ = task_encoding([torch.from_numpy(Z).to(device) for Z in Zs])
     preds = labels.argmax(dim=1).detach().cpu().numpy()
 
-    return preds, float(pred_error)
+    return preds, float(pred_error), lambda Zs: task_encoding([torch.from_numpy(Z).to(device) for Z in Zs])[0]

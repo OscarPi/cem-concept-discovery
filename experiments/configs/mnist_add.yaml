@@ -1,7 +1,8 @@
-description: MNIST_ADD run
+description: MNIST_ADD concept splitting run
 dataset: mnist_add
 dataset_dir: /datasets
 model_dir: /checkpoints
+results_dir: results/
 mnist_config:
   n_digits: 2
   max_digit: 6
@@ -10,18 +11,18 @@ pre_concept_cnn_config:
   width: 28
   height: 28
   channels: 2
+cluster_representations: False
 max_epochs: 300
 min_n_clusters: 2
-max_n_clusters: 100
+max_n_clusters: 50
 foundation_models:
   - dinov2
   - clip
-minimum_cluster_size: 0.01
-results_dir: results/
-use_wandb: True
-max_concepts_to_discover: 20
-match_threshold: 0
+use_wandb: False
 warm_start: True
-turtle_epochs: 6000
+turtle_epochs: 1000
 use_task_class_weights: True
 use_concept_loss_weights: True
+only_match_subconcepts: True
+cluster_by_class: False
+n_concepts_to_split: 2

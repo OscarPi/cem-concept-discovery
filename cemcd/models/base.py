@@ -10,6 +10,8 @@ class BaseModel(lightning.LightningModule):
         self.n_tasks = n_tasks
 
         self.intervention_mask = None
+        self.intervention_on_value = 1
+        self.intervention_off_value = 0
 
         self.loss_concept = torch.nn.BCELoss(weight=concept_loss_weights)
         if self.n_tasks > 1:
@@ -107,7 +109,7 @@ class BaseModel(lightning.LightningModule):
         return loss
 
     def predict_step(self, batch, batch_idx):
-        x, y, c = batch
+        x, _, c = batch
         return self.forward(
             x,
             c_true=c
@@ -116,8 +118,7 @@ class BaseModel(lightning.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            verbose=True,
+            optimizer
         )
         return {
             "optimizer": optimizer,
