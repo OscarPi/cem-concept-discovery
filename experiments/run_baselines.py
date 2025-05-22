@@ -73,7 +73,9 @@ def run_baselines(config):
         })
 
         _, black_box_test_results = train_black_box(
+            n_concepts=dataset.n_concepts, # Determines the shape of the architecture, black box so no concept supervision is used.
             n_tasks=dataset.n_tasks,
+            pre_concept_model=None,
             latent_representation_size=dataset.latent_representation_size,
             train_dl=dataset.train_dl(),
             val_dl=dataset.val_dl(),

@@ -1,8 +1,8 @@
 description: AwA concept splitting run
 dataset: awa
-dataset_dir: /homes/ogh22/datasets
-model_dir: /homes/ogh22/checkpoints
-results_dir: /homes/ogh22/results
+dataset_dir: /datasets
+model_dir: /checkpoints
+results_dir: results/
 pre_concept_model: resnet34
 cluster_representations: False
 max_epochs: 300
@@ -11,10 +11,11 @@ max_n_clusters: 13
 foundation_models:
   - dinov2
   - clip
-use_wandb: True
+use_wandb: False
 warm_start: True
 turtle_epochs: 1000
 use_task_class_weights: False
 use_concept_loss_weights: False
-only_discover_subconcepts: True
+only_match_subconcepts: True
 cluster_by_class: False
+n_concepts_to_split: 4

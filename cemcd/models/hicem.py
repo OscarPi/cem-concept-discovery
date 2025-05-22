@@ -24,7 +24,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
         self.concept_loss_weight = 10
 
         self.top_concept_embedding_generators = torch.nn.ModuleList()
-        for i in range(self.n_top_concepts):
+        for _ in range(self.n_top_concepts):
             self.top_concept_embedding_generators.append(torch.nn.Sequential(
                 torch.nn.Linear(latent_representation_size, self.embedding_size * 2),
                 torch.nn.LeakyReLU()

@@ -4,7 +4,7 @@ import torch
 import lightning
 from torchvision.models import resnet34
 from cemcd.models.pre_concept_models import get_pre_concept_model
-from cemcd.data import awa, cub, dsprites, mnist, celeba, shapes, cifar100
+from cemcd.data import awa, cub, mnist, shapes
 from cemcd.training import train_cem, load_cem
 
 def load_config(config_file):
@@ -20,15 +20,6 @@ def load_datasets(config):
             datasets.append(mnist.MNISTDatasets(
                 n_digits=mnist_config["n_digits"],
                 max_digit=mnist_config["max_digit"],
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
-    elif config["dataset"] == "dsprites":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(dsprites.DSpritesDatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
                 model_dir=config["model_dir"]))
@@ -56,24 +47,6 @@ def load_datasets(config):
         for foundation_model in config["foundation_models"]:
             print(f"Running foundation model {foundation_model}.")
             datasets.append(awa.AwADatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
-    elif config["dataset"] == "celeba":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(celeba.CELEBADatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
-    elif config["dataset"] == "cifar100":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(cifar100.CIFARDatasets(
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
                 model_dir=config["model_dir"]))
@@ -138,12 +111,6 @@ def get_initial_models(config, datasets, run_dir):
 
 def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_time):
     trainer = lightning.Trainer()
-
-    # c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, train_dl)
-    # model.intervention_on_value = torch.from_numpy(np.percentile(c_pred, 95, axis=0))
-    # model.intervention_off_value = torch.from_numpy(np.percentile(c_pred, 5, axis=0))
-    # print(f"{model_name} interventions on value: {model.intervention_on_value}")
-    # print(f"{model_name} interventions off value: {model.intervention_off_value}")
 
     intervention_accuracies = []
     model.intervention_mask = torch.tensor([0] * model.n_concepts)

@@ -5,7 +5,6 @@ from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from cemcd.models.cem import ConceptEmbeddingModel
 from cemcd.models.hicem import HierarchicalConceptEmbeddingModel
 from cemcd.models.cbm import ConceptBottleneckModel
-from cemcd.models.black_box import BlackBoxModel
 
 def calculate_task_class_weights(n_tasks, train_dl):
     attribute_count = np.zeros((max(n_tasks, 2),))
@@ -270,7 +269,9 @@ def load_cbm(
     return model, test_results
 
 def train_black_box(
+        n_concepts,
         n_tasks,
+        pre_concept_model,
         latent_representation_size,
         train_dl,
         val_dl,
@@ -282,10 +283,14 @@ def train_black_box(
     if use_task_class_weights:
         task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
 
-    model = BlackBoxModel(
+    model = ConceptEmbeddingModel(
+        n_concepts=n_concepts,
         n_tasks=n_tasks,
+        pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
-        task_class_weights=task_class_weights
+        task_class_weights=task_class_weights,
+        concept_loss_weights=None,
+        concept_loss_weight=0
     )
 
     trainer = lightning.Trainer(

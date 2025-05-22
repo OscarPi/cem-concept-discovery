@@ -1,12 +1,9 @@
 from pathlib import Path
-from tqdm import trange
 import sklearn.model_selection
 import numpy as np
 import torch
 import torchvision
-import clip
 from cemcd.data.base import Datasets
-from cemcd.data import transforms
 
 x_train = []
 y_train = []
@@ -96,7 +93,7 @@ class MNISTDatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=None,
             val_test_img_transform=None,
-            dataset_dir=representation_cache_dir,
+            representation_cache_dir=representation_cache_dir,
             model_dir=model_dir,
             device=device
         )
@@ -113,12 +110,10 @@ class MNISTDatasets(Datasets):
                 test_concepts.append(self.test_labels[:, i] == j)
                 concept_names.append(f"Digit {i} is {j}")
             self.sub_concept_map.append(sub_concepts)
-        train_concepts = np.stack(train_concepts, axis=1)
-        test_concepts = np.stack(test_concepts, axis=1)
 
-        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
-        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
-        self.concept_names = concept_names + list(map(lambda s: "NOT " + s, concept_names))
+        self.concept_bank = np.stack(train_concepts, axis=1)
+        self.concept_test_ground_truth = np.stack(test_concepts, axis=1)
+        self.concept_names = concept_names
 
         self.n_concepts = n_digits
         self.n_tasks = max_digit * n_digits + 1

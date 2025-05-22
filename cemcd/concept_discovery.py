@@ -117,7 +117,7 @@ def split_concepts(config, save_path, initial_models, datasets, concepts_to_spli
             labels = np.repeat(0, train_dataset_size)
             labels[sample_filter] = cluster_labels == cluster
 
-            if config["only_discover_subconcepts"]:
+            if config["only_match_subconcepts"]:
                 roc_auc, matching_concept_idx = match_to_concept_bank(labels, datasets[0], datasets[0].sub_concept_map[concept_idx])
             else:
                 roc_auc, matching_concept_idx = match_to_concept_bank(labels, datasets[0])

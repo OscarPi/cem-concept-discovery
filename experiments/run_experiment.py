@@ -211,7 +211,7 @@ def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
         sub_concept_idx = n_top_concepts
         for top_concept_idx in range(n_top_concepts):
             for _ in range(sum(sub_concepts[top_concept_idx])):
-                if config["only_discover_subconcepts"]:
+                if config["only_match_subconcepts"]:
                     _, matching_concept_idx = cemcd.concept_discovery.match_to_concept_bank(c_pred[:, sub_concept_idx], dataset, dataset.sub_concept_map[top_concept_idx])
                 else:
                     _, matching_concept_idx = cemcd.concept_discovery.match_to_concept_bank(c_pred[:, sub_concept_idx], dataset)
@@ -259,7 +259,7 @@ def run_experiment(run_dir, config):
         save_path=run_dir,
         initial_models=initial_models,
         datasets=datasets,
-        concepts_to_split=range(4))#range(datasets[0].n_concepts)) TODO
+        concepts_to_split=range(config["n_concepts_to_split"]))
     n_discovered_concepts = discovered_concept_labels.shape[1]
     n_discovered_top_concepts = n_discovered_concepts - sum(n_discovered_sub_concepts)
 

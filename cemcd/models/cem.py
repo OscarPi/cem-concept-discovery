@@ -10,14 +10,15 @@ class ConceptEmbeddingModel(base.BaseModel):
             pre_concept_model,
             latent_representation_size,
             task_class_weights,
-            concept_loss_weights):
+            concept_loss_weights,
+            concept_loss_weight=10):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
 
         self.pre_concept_model = copy.deepcopy(pre_concept_model)
 
         self.embedding_size = 16
-        self.concept_loss_weight = 10
+        self.concept_loss_weight = concept_loss_weight
 
         self.concept_embedding_generators = torch.nn.ModuleList()
         for _ in range(self.n_concepts):
@@ -59,7 +60,7 @@ class ConceptEmbeddingModel(base.BaseModel):
         if self.intervention_mask is not None:
             interventions = torch.tile(self.intervention_mask, (predicted_concept_probs.shape[0], 1))
 
-        if train and c_true is not None and interventions is None:
+        if train and c_true is not None and interventions is None and self.concept_loss_weight != 0:
             mask = torch.bernoulli(torch.full((self.n_concepts,), 0.25))
             interventions = torch.tile(mask, (predicted_concept_probs.shape[0], 1))
 

@@ -210,14 +210,13 @@ class AwADatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=train_img_transform,
             val_test_img_transform=val_test_img_transform,
-            dataset_dir=dataset_dir / "AwA2",
+            representation_cache_dir=dataset_dir / "AwA2",
             model_dir=model_dir,
             device=device
         )
 
         self.concept_bank = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], train_data)))
         self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], test_data)))
-
 
         self.concept_names = SUB_CONCEPT_NAMES
 

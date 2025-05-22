@@ -18,10 +18,11 @@ max_n_clusters: 50
 foundation_models:
   - dinov2
   - clip
-use_wandb: True
+use_wandb: False
 warm_start: True
 turtle_epochs: 1000
 use_task_class_weights: True
 use_concept_loss_weights: True
-only_discover_subconcepts: True
+only_match_subconcepts: True
 cluster_by_class: False
+n_concepts_to_split: 2

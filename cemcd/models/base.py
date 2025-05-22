@@ -109,7 +109,7 @@ class BaseModel(lightning.LightningModule):
         return loss
 
     def predict_step(self, batch, batch_idx):
-        x, y, c = batch
+        x, _, c = batch
         return self.forward(
             x,
             c_true=c

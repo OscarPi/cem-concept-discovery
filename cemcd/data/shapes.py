@@ -118,15 +118,13 @@ class ShapesDatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=None,
             val_test_img_transform=None,
-            dataset_dir=Path(dataset_dir) / "shapes",
+            representation_cache_dir=Path(dataset_dir) / "shapes",
             model_dir=model_dir,
             device=device)
         
-        train_concepts = make_concept_bank(dataset["train"])
-        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
+        self.concept_bank = make_concept_bank(dataset["train"])
 
-        test_concepts = make_concept_bank(dataset["test"])
-        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
+        self.concept_test_ground_truth = make_concept_bank(dataset["test"])
 
         self.sub_concept_map = [
             [0, 2, 3],
@@ -150,7 +148,7 @@ class ShapesDatasets(Datasets):
             "Background is blue", # 10
             "Background is purple" # 11
         ]
-        self.concept_names = names + list(map(lambda s: "NOT " + s, names))
+        self.concept_names = names
 
         self.n_concepts = 5
         self.n_tasks = 48

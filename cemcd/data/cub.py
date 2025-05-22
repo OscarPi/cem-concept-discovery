@@ -759,8 +759,6 @@ class CUBDatasets(Datasets):
                 image_path = image_dir / image_path[78:]
                 image = Image.open(image_path).convert("RGB")
                 class_label = example["class_label"]
-                attr_label = np.array(example["attribute_label"])
-                assert np.mean(concept_matrix[class_label][SELECTED_CONCEPTS] == attr_label) > 0.8
                 concept_labels = compress_colour_concepts(concept_matrix[class_label])
 
                 return image, class_label, torch.tensor(concept_labels, dtype=torch.float32)
@@ -780,19 +778,16 @@ class CUBDatasets(Datasets):
             foundation_model=foundation_model,
             train_img_transform=train_img_transform,
             val_test_img_transform=val_test_img_transform,
-            dataset_dir=Path(dataset_dir) / "CUB",
+            representation_cache_dir=Path(dataset_dir) / "CUB",
             model_dir=model_dir,
             device=device
         )
 
-        train_concepts = np.array(list(map(lambda d: concept_matrix[d["class_label"]], train_data)))
-        self.concept_bank = np.concatenate((train_concepts, np.logical_not(train_concepts)), axis=1)
-        test_concepts = np.array(list(map(lambda d: concept_matrix[d["class_label"]], test_data)))
-        self.concept_test_ground_truth = np.concatenate((test_concepts, np.logical_not(test_concepts)), axis=1)
-        self.concept_names = CONCEPT_SEMANTICS + list(map(lambda s: "NOT " + s, CONCEPT_SEMANTICS))
+        self.concept_bank = np.array(list(map(lambda d: concept_matrix[d["class_label"]], train_data)))
+        self.concept_test_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], test_data)))
+        self.concept_names = CONCEPT_SEMANTICS
 
         self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
         self.n_tasks = N_CLASSES
 
         self.sub_concept_map = SUB_CONCEPT_MAP
-

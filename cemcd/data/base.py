@@ -39,7 +39,7 @@ class Datasets:
             foundation_model=None,
             train_img_transform=None,
             val_test_img_transform=None,
-            dataset_dir=None,
+            representation_cache_dir=None,
             model_dir="/checkpoints",
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         self.foundation_model = foundation_model
@@ -50,8 +50,8 @@ class Datasets:
         self.val_test_img_transform = val_test_img_transform
 
         if self.foundation_model is not None:
-            if (Path(dataset_dir) / f"{self.foundation_model}.pt").exists():
-                cache_file = Path(dataset_dir) / f"{self.foundation_model}.pt"
+            if (Path(representation_cache_dir) / f"{self.foundation_model}.pt").exists():
+                cache_file = Path(representation_cache_dir) / f"{self.foundation_model}.pt"
                 print(f"Loading representations from {cache_file}.")
                 data = torch.load(cache_file)
                 self.train_x = data["train_x"]
@@ -78,7 +78,7 @@ class Datasets:
                     "test_y": self.test_y,
                     "test_c": self.test_c
                 }
-                torch.save(data, Path(dataset_dir) / f"{self.foundation_model}.pt")
+                torch.save(data, Path(representation_cache_dir) / f"{self.foundation_model}.pt")
 
         self.n_concepts = None
         self.n_tasks = None
@@ -98,7 +98,7 @@ class Datasets:
             torch.hub.set_dir(Path(model_dir) / "dinov2")
             model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14').to(device)
             model.eval()
-            transform = transforms.default_transforms
+            transform = transforms.dino_transforms
         elif self.foundation_model == "clip":
             ckpt_dir = Path(model_dir) / "clip"
             model, transform = clip.load("ViT-L/14", device=device, download_root=ckpt_dir)
