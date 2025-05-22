@@ -1,13 +1,13 @@
 # HiCEMs and Concept Splitting
----
+
 A library for discovering sub-concepts encoded in the latent space of CEMs and using the discovered concepts to train more interpretable models.
 
 ## Credits
----
+
 Some of the code in this repository is based on the [implementation](https://github.com/mateoespinosa/cem) released by Espinosa Zarlenga et al. for their NeurIPS 2022 paper "Concept Embedding Models: Beyond the Accuracy-Explainability Trade-Off".
 
 ## Installation
----
+
 
 Make sure you have Python 3.10 and pip >= 24.0 installed.
 Install [CLIP](https://github.com/openai/CLIP), then run:
@@ -17,7 +17,7 @@ Install [CLIP](https://github.com/openai/CLIP), then run:
 `
 
 ## Usage
----
+
 `
     python experiments/run_experiment.py <experiment_config.yaml>
 `
