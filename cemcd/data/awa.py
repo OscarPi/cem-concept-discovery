@@ -217,6 +217,7 @@ class AwADatasets(Datasets):
 
         self.concept_bank = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], train_data)))
         self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], test_data)))
+        self.labelfree_concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"]), test_data)))
 
         self.concept_names = SUB_CONCEPT_NAMES
 

@@ -8,6 +8,21 @@ from cemcd.data.base import Datasets
 SHAPES = ["square", "circle", "triangle", "hexagon"]
 COLOURS = ["red", "green", "blue", "purple"]
 
+CONCEPT_NAMES = [
+    "Shape is a square", # 0
+    "Shape is a circle", # 1
+    "Shape is a triangle", # 2
+    "Shape is a hexagon", # 3
+    "Shape is red", # 4
+    "Shape is green", # 5
+    "Shape is blue", # 6
+    "Shape is purple", # 7
+    "Background is red", # 8
+    "Background is green", # 9
+    "Background is blue", # 10
+    "Background is purple" # 11
+]
+
 def render_image(example):
     im = Image.new(mode="RGB", size=(256, 256), color=example["background_colour"])
     draw = ImageDraw.Draw(im)
@@ -134,21 +149,7 @@ class ShapesDatasets(Datasets):
             [10, 11]
         ]
     
-        names = [
-            "Shape is a square", # 0
-            "Shape is a circle", # 1
-            "Shape is a triangle", # 2
-            "Shape is a hexagon", # 3
-            "Shape is red", # 4
-            "Shape is green", # 5
-            "Shape is blue", # 6
-            "Shape is purple", # 7
-            "Background is red", # 8
-            "Background is green", # 9
-            "Background is blue", # 10
-            "Background is purple" # 11
-        ]
-        self.concept_names = names
+        self.concept_names = CONCEPT_NAMES
 
         self.n_concepts = 5
         self.n_tasks = 48

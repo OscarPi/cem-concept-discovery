@@ -1,9 +1,12 @@
 import sklearn.metrics
+import torch
 import numpy as np
 
 def calculate_concept_accuracies(c_pred, c_true):
-    c_pred = c_pred.cpu().detach().numpy()
-    c_true = c_true.cpu().detach().numpy()
+    if isinstance(c_pred, torch.Tensor):
+        c_pred = c_pred.cpu().detach().numpy()
+    if isinstance(c_true, torch.Tensor):
+        c_true = c_true.cpu().detach().numpy()
 
     c_accuracies = []
     c_aucs = []

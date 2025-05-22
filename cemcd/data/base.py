@@ -7,11 +7,12 @@ import clip
 from cemcd.data import transforms
 
 class CEMDataset(Dataset):
-    def __init__(self, data_getter, transform=None, additional_concepts=None, use_provided_concepts=True):
+    def __init__(self, data_getter, transform=None, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
         self.data_getter = data_getter
         self.transform = transform
         self.additional_concepts = additional_concepts
         self.use_provided_concepts = use_provided_concepts
+        self.no_concepts = no_concepts
 
     def __len__(self):
         return self.data_getter.length
@@ -27,6 +28,9 @@ class CEMDataset(Dataset):
 
         if self.additional_concepts is not None:
             c = torch.concat((c, torch.from_numpy(self.additional_concepts[idx].astype(np.float32))))
+
+        if self.no_concepts:
+            return x, y
 
         return x, y, c
 
@@ -128,60 +132,72 @@ class Datasets:
                 cs.append(c)
         return torch.stack(xs), torch.tensor(ys), torch.stack(cs)
     
-    def train_dl(self, additional_concepts=None, use_provided_concepts=True):
+    def train_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
         if self.foundation_model is not None:
             c = self.train_c
             if not use_provided_concepts:
                 c = torch.empty(size=(self.train_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
-            dataset = TensorDataset(self.train_x, self.train_y, c)
+            if no_concepts:
+                dataset = TensorDataset(self.train_x, self.train_y)
+            else:
+                dataset = TensorDataset(self.train_x, self.train_y, c)
         else:
             dataset = CEMDataset(
                 data_getter=self.train_getter,
                 transform=self.train_img_transform,
                 additional_concepts=additional_concepts,
-                use_provided_concepts=use_provided_concepts)
+                use_provided_concepts=use_provided_concepts,
+                no_concepts=no_concepts)
 
         return DataLoader(
             dataset,
             batch_size=256,
             num_workers=7)
 
-    def val_dl(self, additional_concepts=None, use_provided_concepts=True):
+    def val_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
         if self.foundation_model is not None:
             c = self.val_c
             if not use_provided_concepts:
                 c = torch.empty(size=(self.val_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
-            dataset = TensorDataset(self.val_x, self.val_y, c)
+            if no_concepts:
+                dataset = TensorDataset(self.val_x, self.val_y)
+            else:
+                dataset = TensorDataset(self.val_x, self.val_y, c)
         else:
             dataset = CEMDataset(
                 data_getter=self.val_getter,
                 transform=self.val_test_img_transform,
                 additional_concepts=additional_concepts,
-                use_provided_concepts=use_provided_concepts)
+                use_provided_concepts=use_provided_concepts,
+                no_concepts=no_concepts)
 
         return DataLoader(
             dataset,
             batch_size=256,
             num_workers=7)
     
-    def test_dl(self, additional_concepts=None, use_provided_concepts=True):
+    def test_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
         if self.foundation_model is not None:
             c = self.test_c
             if not use_provided_concepts:
                 c = torch.empty(size=(self.test_c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
-            dataset = TensorDataset(self.test_x, self.test_y, c)
+            if no_concepts:
+                dataset = TensorDataset(self.test_x, self.test_y)
+            else:
+                dataset = TensorDataset(self.test_x, self.test_y, c)
         else:
             dataset = CEMDataset(
                 data_getter=self.test_getter,
                 transform=self.val_test_img_transform,
                 additional_concepts=additional_concepts,
-                use_provided_concepts=use_provided_concepts)
+                use_provided_concepts=use_provided_concepts,
+                no_concepts=no_concepts)
         
         return DataLoader(
                 dataset,

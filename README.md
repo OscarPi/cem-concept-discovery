@@ -25,8 +25,10 @@ Install [CLIP](https://github.com/openai/CLIP), then run:
 or
 
 `
-    python experiments/run_baselines.py <experiment_config.yaml>
+    python experiments/run_simple_baselines.py <experiment_config.yaml>
 `
+
+The scripts [baselines/run_labelfree_baseline.py](baselines/run_labelfree_baseline.py) and [baselines/run_pcbm_baseline.py](baselines/run_pcbm_baseline.py) can be used to run the Label-free CBM baseline and the Post-hoc CBM baseline.
 
 Before running an experiment, you need to download the dataset, and update the `dataset_dir`, `model_dir` and `results_dir` in the experiment config file. (The `model_dir` and `results_dir` can be empty: any models should be downloaded automatically.)
 
