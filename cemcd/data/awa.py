@@ -156,7 +156,7 @@ class AwADatasets(Datasets):
             foundation_model=None,
             dataset_dir="/datasets",
             model_dir="/checkpoints",
-            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         dataset_dir = Path(dataset_dir)
         with (dataset_dir / "AwA2" / "train.pkl").open("rb") as f:
             train_data = pickle.load(f)

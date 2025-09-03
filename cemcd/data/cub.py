@@ -738,7 +738,7 @@ class CUBDatasets(Datasets):
             foundation_model=None,
             dataset_dir="/datasets",
             model_dir="/checkpoints",
-            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         base_dir = Path(dataset_dir) / "CUB"      
         image_dir = base_dir / "images"
         data_dir = base_dir / "class_attr_data_10"

@@ -108,7 +108,7 @@ def evaluate_cbm(load_dir, dataset_dir, model_dir, dataset, device):
 
 if __name__=='__main__':
     torch.set_float32_matmul_precision("high")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     args = parse_arguments()
 

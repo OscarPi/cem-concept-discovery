@@ -45,7 +45,7 @@ class Datasets:
             val_test_img_transform=None,
             representation_cache_dir=None,
             model_dir="/checkpoints",
-            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         self.foundation_model = foundation_model
         self.train_getter = train_getter
         self.val_getter = val_getter
@@ -54,8 +54,8 @@ class Datasets:
         self.val_test_img_transform = val_test_img_transform
 
         if self.foundation_model is not None:
-            if (Path(representation_cache_dir) / f"{self.foundation_model}.pt").exists():
-                cache_file = Path(representation_cache_dir) / f"{self.foundation_model}.pt"
+            cache_file = Path(representation_cache_dir) / f"{self.foundation_model}.pt"
+            if cache_file.exists():
                 print(f"Loading representations from {cache_file}.")
                 data = torch.load(cache_file)
                 self.train_x = data["train_x"]
@@ -82,7 +82,7 @@ class Datasets:
                     "test_y": self.test_y,
                     "test_c": self.test_c
                 }
-                torch.save(data, Path(representation_cache_dir) / f"{self.foundation_model}.pt")
+                torch.save(data, cache_file)
 
         self.n_concepts = None
         self.n_tasks = None

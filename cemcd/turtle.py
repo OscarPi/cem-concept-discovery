@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 def run_turtle(Zs, k, warm_start=False, gamma=10., epochs=6000):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     n_tr = Zs[0].shape[0]
     feature_dims = [Z.shape[1] for Z in Zs]
     batch_size = min(10000, n_tr)

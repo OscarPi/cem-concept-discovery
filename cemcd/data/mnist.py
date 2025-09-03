@@ -60,7 +60,7 @@ class MNISTDatasets(Datasets):
             foundation_model=None,
             dataset_dir="/datasets",
             model_dir="/checkpoints",
-            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         selected_digits = tuple(range(max_digit + 1))
         load_mnist(dataset_dir)
 

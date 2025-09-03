@@ -16,7 +16,7 @@ from post_hoc.concepts import EasyDict
 from post_hoc.train_pcbm import run_linear_probe
 from post_hoc.train_pcbm_h import train_hybrid
 
-from cemcd.data import mnist, awa, cub, shapes
+from cemcd.data import mnist, awa, cub, shapes, transforms
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -74,7 +74,7 @@ def main(args, concept_bank, backbone, datasets):
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     args = parse_arguments()
 
@@ -95,6 +95,8 @@ if __name__ == "__main__":
     options.l2_penalty = 0.001
 
     model, clip_preprocess = clip.load("ViT-L/14", device=device, download_root=args.model_dir)
+    clip_preprocess.transforms[2] = transforms._convert_image_to_rgb
+    clip_preprocess.transforms[3] = transforms._safe_to_tensor
 
     if args.dataset == "awa":
         datasets = awa.AwADatasets(dataset_dir=args.dataset_dir)

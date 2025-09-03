@@ -114,7 +114,7 @@ class ShapesDatasets(Datasets):
             foundation_model=None,
             dataset_dir="/datasets",
             model_dir="/checkpoints",
-            device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         with (Path(dataset_dir) / "shapes" / "shapes_dataset.pkl").open("rb") as f:
             dataset = pickle.load(f)
 
