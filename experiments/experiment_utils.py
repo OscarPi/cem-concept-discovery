@@ -2,10 +2,8 @@ from pathlib import Path
 import yaml
 import torch
 import lightning
-from torchvision.models import resnet34
-from cemcd.models.pre_concept_models import get_pre_concept_model
 from cemcd.data import awa, cub, mnist, shapes, kitchens
-from cemcd.training import train_cem, load_cem
+from cemcd.training import train_cem
 
 def load_config(config_file):
     with open(config_file, "r") as f:
@@ -62,58 +60,27 @@ def load_datasets(config):
         return datasets
     raise ValueError(f"Unrecognised dataset: {config['dataset']}")
 
-def make_pre_concept_model(config):
-    if config["pre_concept_model"] == "cnn":
-        cnn_config = config["pre_concept_cnn_config"]
-        return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"])
-    elif config["pre_concept_model"] == "resnet34":
-        return resnet34(pretrained=True)
-
-    raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
-
-def make_concept_model(config, n_concepts):
-    if config["pre_concept_model"] == "cnn":
-        cnn_config = config["pre_concept_cnn_config"]
-        return get_pre_concept_model(cnn_config["width"], cnn_config["height"], cnn_config["channels"], n_concepts)
-    elif config["pre_concept_model"] == "resnet34":
-        return torch.nn.Sequential(resnet34(pretrained=True), torch.nn.Linear(1000, n_concepts))
-
-    raise ValueError(f"Unknown pre concept model: {config['pre_concept_model']}")
-
-def get_initial_models(config, datasets, run_dir):
+def train_initial_cems(config, datasets, run_dir):
     models = []
     test_results = []
     for dataset in datasets:
-        if config.get("cache_dir", None) is not None:
-            load_path = Path(config["cache_dir"]) / f"initial_{dataset.foundation_model or 'basic'}cem.pth"
-            print(f"Loading model from {load_path}.")
-            model, test_result = load_cem(
-                n_concepts=dataset.n_concepts,
-                n_tasks=dataset.n_tasks,
-                pre_concept_model=None,
-                latent_representation_size=dataset.latent_representation_size,
-                train_dl=dataset.train_dl(),
-                test_dl=dataset.test_dl(),
-                path=load_path,
-                use_task_class_weights=config["use_task_class_weights"],
-                use_concept_loss_weights=config["use_concept_loss_weights"])
+        if run_dir is None:
+            save_path = None
         else:
-            if run_dir is None:
-                save_path = None
-            else:
-                save_path = Path(run_dir) / f"initial_{dataset.foundation_model or 'basic'}cem.pth"
-            model, test_result = train_cem(
-                n_concepts=dataset.n_concepts,
-                n_tasks=dataset.n_tasks,
-                pre_concept_model=None,
-                latent_representation_size=dataset.latent_representation_size,
-                train_dl=dataset.train_dl(),
-                val_dl=dataset.val_dl(),
-                test_dl=dataset.test_dl(),
-                save_path=save_path,
-                max_epochs=config["max_epochs"],
-                use_task_class_weights=config["use_task_class_weights"],
-                use_concept_loss_weights=config["use_concept_loss_weights"])
+            save_path = Path(run_dir) / f"initial_{dataset.foundation_model}_cem.pth"
+        model, test_result = train_cem(
+            n_concepts=dataset.n_concepts,
+            n_tasks=dataset.n_tasks,
+            latent_representation_size=dataset.latent_representation_size,
+            embedding_size=config["cem_embedding_size"],
+            concept_loss_weight=config["cem_concept_loss_weight"],
+            train_dl=dataset.train_dl(),
+            val_dl=dataset.val_dl(),
+            test_dl=dataset.test_dl(),
+            save_path=save_path,
+            max_epochs=config["max_epochs"],
+            use_task_class_weights=config["use_task_class_weights"],
+            use_concept_loss_weights=config["use_concept_loss_weights"])
         models.append(model)
         test_results.append(test_result)
     return models, test_results

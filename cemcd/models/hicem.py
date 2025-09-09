@@ -7,8 +7,9 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
             self,
             sub_concepts,
             n_tasks,
-            pre_concept_model,
             latent_representation_size,
+            embedding_size,
+            concept_loss_weight,
             task_class_weights,
             concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
@@ -18,10 +19,8 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
         self.n_sub_concepts = sum(map(sum, self.sub_concepts))
         self.n_concepts = self.n_top_concepts + self.n_sub_concepts
 
-        self.pre_concept_model = copy.deepcopy(pre_concept_model)
-
-        self.embedding_size = 16
-        self.concept_loss_weight = 10
+        self.embedding_size = embedding_size
+        self.concept_loss_weight = concept_loss_weight
 
         self.top_concept_embedding_generators = torch.nn.ModuleList()
         for _ in range(self.n_top_concepts):
@@ -138,10 +137,6 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
     def forward(self, x, c_true=None, train=False):
         batch_size = x.shape[0]
         device = x.device
-        if self.pre_concept_model is None:
-            latent = x
-        else:
-            latent = self.pre_concept_model(x)
 
         intervention_mask = self.intervention_mask
         if train and c_true is not None and intervention_mask is None:
@@ -153,7 +148,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
         all_predicted_sub_concept_probs = torch.zeros((batch_size, 0), device=device)
 
         for top_concept_idx, top_concept_generator in enumerate(self.top_concept_embedding_generators):
-            top_concept_embeddings = top_concept_generator(latent)
+            top_concept_embeddings = top_concept_generator(x)
             top_concept_positive_embeddings = top_concept_embeddings[:, :self.embedding_size]
             top_concept_negative_embeddings = top_concept_embeddings[:, self.embedding_size:]
 

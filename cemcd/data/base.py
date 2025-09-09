@@ -86,9 +86,6 @@ class Datasets:
 
         self.n_concepts = None
         self.n_tasks = None
-        self.concept_bank = None
-        self.concept_test_ground_truth = None
-        self.concept_names = None
 
         if foundation_model == "dinov2":
             self.latent_representation_size = 1536

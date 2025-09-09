@@ -50,8 +50,9 @@ def calculate_concept_loss_weights(n_concepts, train_dl):
 def train_cem(
         n_concepts,
         n_tasks,
-        pre_concept_model,
         latent_representation_size,
+        embedding_size,
+        concept_loss_weight,
         train_dl,
         val_dl,
         test_dl,
@@ -68,8 +69,9 @@ def train_cem(
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
-        pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
+        embedding_size=embedding_size,
+        concept_loss_weight=concept_loss_weight,
         task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights
     )
@@ -101,8 +103,9 @@ def train_cem(
 def train_hicem(
         sub_concepts,
         n_tasks,
-        pre_concept_model,
         latent_representation_size,
+        embedding_size,
+        concept_loss_weight,
         train_dl,
         val_dl,
         test_dl,
@@ -121,8 +124,9 @@ def train_hicem(
     model = HierarchicalConceptEmbeddingModel(
         sub_concepts=sub_concepts,
         n_tasks=n_tasks,
-        pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
+        embedding_size=embedding_size,
+        concept_loss_weight=concept_loss_weight,
         task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights
     )
@@ -154,8 +158,9 @@ def train_hicem(
 def load_cem(
         n_concepts,
         n_tasks,
-        pre_concept_model,
         latent_representation_size,
+        embedding_size,
+        concept_loss_weight,
         train_dl,
         test_dl,
         path,
@@ -170,16 +175,16 @@ def load_cem(
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
-        pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
+        embedding_size=embedding_size,
+        concept_loss_weight=concept_loss_weight,
         task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights
     )
 
-    trainer = lightning.Trainer()
-
     model.load_state_dict(torch.load(path))
 
+    trainer = lightning.Trainer()
     model.freeze()
     [test_results] = trainer.test(model, test_dl)
 
@@ -189,6 +194,7 @@ def train_cbm(
         n_concepts,
         n_tasks,
         latent_representation_size,
+        concept_loss_weight,
         train_dl,
         val_dl,
         test_dl,
@@ -207,6 +213,7 @@ def train_cbm(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
+        concept_loss_weight=concept_loss_weight,
         task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights,
     )
@@ -239,6 +246,7 @@ def load_cbm(
         n_concepts,
         n_tasks,
         latent_representation_size,
+        concept_loss_weight,
         train_dl,
         test_dl,
         path,
@@ -255,6 +263,7 @@ def load_cbm(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
+        concept_loss_weight=concept_loss_weight,
         task_class_weights=task_class_weights,
         concept_loss_weights=concept_loss_weights,
     )
@@ -271,8 +280,8 @@ def load_cbm(
 def train_black_box(
         n_concepts,
         n_tasks,
-        pre_concept_model,
         latent_representation_size,
+        embedding_size,
         train_dl,
         val_dl,
         test_dl,
@@ -286,11 +295,11 @@ def train_black_box(
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
         n_tasks=n_tasks,
-        pre_concept_model=pre_concept_model,
         latent_representation_size=latent_representation_size,
+        embedding_size=embedding_size,
+        concept_loss_weight=0,
         task_class_weights=task_class_weights,
         concept_loss_weights=None,
-        concept_loss_weight=0
     )
 
     trainer = lightning.Trainer(

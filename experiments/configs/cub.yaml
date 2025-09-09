@@ -3,19 +3,41 @@ dataset: cub
 dataset_dir: /datasets
 model_dir: /checkpoints
 results_dir: results/
-pre_concept_model: resnet34
-cluster_representations: False
+use_task_class_weights: False
+use_concept_loss_weights: True
+use_foundation_model_representations_instead_of_concept_embeddings: False
 max_epochs: 300
-min_n_clusters: 2
-max_n_clusters: 50
+sub_concept_extraction_method: clustering
+clustering_config:
+  min_n_clusters: 2
+  max_n_clusters: 50
+  warm_start: True
+  turtle_epochs: 1000
+sae_config:
+  lr: 0.0003
+  l1_coeff: 0
+  beta1: 0.9
+  beta2: 0.99
+  max_grad_norm: 100000
+  dict_size: 12288
+  input_unit_norm: True
+  n_batches_to_dead: 5
+  n_epochs: 300
+  top_k: 32
+  top_k_aux: 512
+  aux_penalty: 0.03125
 foundation_models:
   - dinov2
   - clip
 use_wandb: False
-warm_start: True
-turtle_epochs: 1000
-use_task_class_weights: False
-use_concept_loss_weights: True
 only_match_subconcepts: True
-cluster_by_class: False
 n_concepts_to_split: 32
+cem_embedding_size: 16
+cem_concept_loss_weight: 1
+hicem_embedding_size: 16
+hicem_concept_loss_weight: 1
+cbm_concept_loss_weight: 1
+evaluate_interventions: False
+evaluate_cems_with_discovered_concepts: False
+evaluate_models_with_perfect_discovered_concepts: False
+evaluate_unlabelled_concepts_baseline: False
