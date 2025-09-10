@@ -301,8 +301,13 @@ def run_experiment(run_dir, config):
     assert len(config["foundation_models"]) == 1 or config["sub_concept_extraction_method"] == "clustering", "Only one foundation model can be used unless clustering is used for sub-concept extraction."
 
     run_dir = Path(run_dir)
+
     datasets = load_datasets(config)
+
+    train_dataset_size = len(datasets[0].train_dl().dataset)
     val_dataset_size = len(datasets[0].val_dl().dataset)
+    test_dataset_size = len(datasets[0].test_dl().dataset)
+
     log = lambda results: log_results(config, run_dir, results)
 
     if not config["use_foundation_model_representations_instead_of_concept_embeddings"]:
@@ -321,16 +326,22 @@ def run_experiment(run_dir, config):
         datasets=datasets,
         concepts_to_split=range(config["n_concepts_to_split"]))
 
-    (discovered_concept_train_ground_truth,
-     discovered_concept_test_ground_truth,
-     discovered_concept_semantics,
-     discovered_concept_roc_aucs) = match_discovered_concepts_to_concept_bank(
-        discovered_concept_labels=discovered_concept_labels,
-        n_discovered_sub_concepts=n_discovered_sub_concepts,
-        concept_bank=datasets[0].concept_bank,
-        concept_test_ground_truth=datasets[0].concept_test_ground_truth,
-        concept_names=datasets[0].concept_names,
-        sub_concept_map=datasets[0].sub_concept_map if config["only_match_subconcepts"] else None)
+    if config["dataset"] != "imagenet":
+        (discovered_concept_train_ground_truth,
+        discovered_concept_test_ground_truth,
+        discovered_concept_semantics,
+        discovered_concept_roc_aucs) = match_discovered_concepts_to_concept_bank(
+            discovered_concept_labels=discovered_concept_labels,
+            n_discovered_sub_concepts=n_discovered_sub_concepts,
+            concept_bank=datasets[0].concept_bank,
+            concept_test_ground_truth=datasets[0].concept_test_ground_truth,
+            concept_names=datasets[0].concept_names,
+            sub_concept_map=datasets[0].sub_concept_map if config["only_match_subconcepts"] else None)
+    else:
+        discovered_concept_train_ground_truth = np.full((train_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)
+        discovered_concept_test_ground_truth = np.full((test_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)
+        discovered_concept_semantics = [None] * sum(n_interpreted_sub_concepts)
+        discovered_concept_roc_aucs = [0] * sum(n_interpreted_sub_concepts)
     
     log({"n_discovered_sub_concepts": n_discovered_sub_concepts,
          "discovered_concept_semantics": list(map(str, discovered_concept_semantics)),

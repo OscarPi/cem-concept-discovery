@@ -57,7 +57,7 @@ class Datasets:
             cache_file = Path(representation_cache_dir) / f"{self.foundation_model}.pt"
             if cache_file.exists():
                 print(f"Loading representations from {cache_file}.")
-                data = torch.load(cache_file)
+                data = torch.load(cache_file, weights_only=True)
                 self.train_x = data["train_x"]
                 self.train_y = data["train_y"]
                 self.train_c = data["train_c"]
@@ -83,24 +83,34 @@ class Datasets:
                     "test_c": self.test_c
                 }
                 torch.save(data, cache_file)
+        else:
+            self.train_x = None
+            self.train_y = None
+            self.train_c = None
+            self.val_x = None
+            self.val_y = None
+            self.val_c = None
+            self.test_x = None
+            self.test_y = None
+            self.test_c = None
 
         self.n_concepts = None
         self.n_tasks = None
 
-        if foundation_model == "dinov2":
+        if foundation_model == "dinov2_vitg14":
             self.latent_representation_size = 1536
-        elif foundation_model == "clip":
+        elif foundation_model == "clip_vitl14":
             self.latent_representation_size = 768
         else:
             self.latent_representation_size = None
 
     def run_foundation_model(self, img_transform, model_dir, data_getter, device):
-        if self.foundation_model == "dinov2":
+        if self.foundation_model == "dinov2_vitg14":
             torch.hub.set_dir(Path(model_dir) / "dinov2")
             model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14').to(device)
             model.eval()
             transform = transforms.dino_transforms
-        elif self.foundation_model == "clip":
+        elif self.foundation_model == "clip_vitl14":
             ckpt_dir = Path(model_dir) / "clip"
             model, transform = clip.load("ViT-L/14", device=device, download_root=ckpt_dir)
             model.eval()
@@ -130,7 +140,7 @@ class Datasets:
         return torch.stack(xs), torch.tensor(ys), torch.stack(cs)
     
     def train_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        if self.foundation_model is not None:
+        if self.train_x is not None and self.train_y is not None and self.train_c is not None:
             c = self.train_c
             if not use_provided_concepts:
                 c = torch.empty(size=(self.train_c.shape[0], 0), dtype=torch.float32)
@@ -154,7 +164,7 @@ class Datasets:
             num_workers=7)
 
     def val_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        if self.foundation_model is not None:
+        if self.val_x is not None and self.val_y is not None and self.val_c is not None:
             c = self.val_c
             if not use_provided_concepts:
                 c = torch.empty(size=(self.val_c.shape[0], 0), dtype=torch.float32)
@@ -178,7 +188,7 @@ class Datasets:
             num_workers=7)
     
     def test_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        if self.foundation_model is not None:
+        if self.test_x is not None and self.test_y is not None and self.test_c is not None:
             c = self.test_c
             if not use_provided_concepts:
                 c = torch.empty(size=(self.test_c.shape[0], 0), dtype=torch.float32)

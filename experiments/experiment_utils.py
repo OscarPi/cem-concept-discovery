@@ -2,7 +2,7 @@ from pathlib import Path
 import yaml
 import torch
 import lightning
-from cemcd.data import awa, cub, mnist, shapes, kitchens
+from cemcd.data import awa, cub, mnist, shapes, kitchens, imagenet
 from cemcd.training import train_cem
 
 def load_config(config_file):
@@ -57,6 +57,13 @@ def load_datasets(config):
                 foundation_model=foundation_model,
                 dataset_dir=config["dataset_dir"],
                 model_dir=config["model_dir"]))
+        return datasets
+    elif config["dataset"] == "imagenet":
+        datasets = []
+        for foundation_model in config["foundation_models"]:
+            datasets.append(imagenet.ImageNetDatasets(
+                foundation_model=foundation_model,
+                dataset_dir=config["dataset_dir"]))
         return datasets
     raise ValueError(f"Unrecognised dataset: {config['dataset']}")
 

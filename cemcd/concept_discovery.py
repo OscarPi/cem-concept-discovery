@@ -78,9 +78,9 @@ def split_by_clustering(cluster_config, train_dataset_size, sample_filter, Zs):
 def split_with_sae(sae_config, train_dataset_size, samples_filter, Zs):
     assert len(Zs) == 1, "SAE-based splitting only supports a single foundation model."
     sae_model = sae.BatchTopKSAE(sae_config)
-    sae.train_sae(sae_model, torch.from_numpy(Zs[0]).to(sae_model.device), sae_config)
-    result = sae_model(torch.from_numpy(Zs[0]).to("cuda"))
-    feature_acts = result["feature_acts"].detach().cpu().numpy()
+    Z = torch.from_numpy(Zs[0]).to(sae_model.device)
+    sae.train_sae(sae_model, Z, sae_config)
+    feature_acts = sae_model(Z)["feature_acts"].detach().cpu().numpy()
     non_dead_feature_acts = feature_acts[:, np.sum(feature_acts, axis=0) > 0]
     discovered_concept_labels = np.zeros((train_dataset_size, non_dead_feature_acts.shape[1]))
     discovered_concept_labels[samples_filter] = non_dead_feature_acts > 0

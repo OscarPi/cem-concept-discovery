@@ -143,7 +143,7 @@ class KitchensDatasets(Datasets):
         if self.foundation_model is not None:
             cache_file = Path(dataset_dir) / f"{self.foundation_model}_concept_test.pt"
             if cache_file.exists():
-                data = torch.load(cache_file)
+                data = torch.load(cache_file, weights_only=True)
                 self.concept_test_x = data["concept_test_x"]
                 self.concept_test_y = data["concept_test_y"]
                 self.concept_test_c = data["concept_test_c"]

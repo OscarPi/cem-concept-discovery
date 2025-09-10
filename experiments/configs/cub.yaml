@@ -27,8 +27,8 @@ sae_config:
   top_k_aux: 512
   aux_penalty: 0.03125
 foundation_models:
-  - dinov2
-  - clip
+  - dinov2_vitg14
+  - clip_vitl14
 use_wandb: False
 only_match_subconcepts: True
 n_concepts_to_split: 32
