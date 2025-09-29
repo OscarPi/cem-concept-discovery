@@ -224,6 +224,8 @@ def match_discovered_concepts_to_concept_bank(
                     break
 
         true_concept_labels = concept_bank[:, true_concept_idx]
+        if np.all(true_concept_labels == 0) or np.all(true_concept_labels == 1):
+            continue
         best_roc_auc = 0
         best_discovered_concept_idx = None
         for discovered_concept_idx in range(first_discovered_concept_to_check, first_discovered_concept_to_check + n_discovered_concepts_to_check):
@@ -461,7 +463,7 @@ if __name__ == "__main__":
         (run_dir / "config.yaml").write_text(Path(args.config).read_text())
         if config["use_wandb"]:
             wandb.init(
-                project="cem-concept-discovery",
+                project="cem-concept-discovery-sae",
                 config=config,
                 name=run_name,
                 notes=config["description"])

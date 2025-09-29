@@ -118,7 +118,7 @@ class Datasets:
             transform.transforms[2] = transforms._convert_image_to_rgb
             transform.transforms[3] = transforms._safe_to_tensor
         else:
-            raise ValueError(f"Unrecognised foundation model: {model}.")
+            raise ValueError(f"Unrecognised foundation model: {self.foundation_model}.")
 
         if img_transform is not None:
             transform = img_transform

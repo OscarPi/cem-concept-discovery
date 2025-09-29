@@ -6,7 +6,7 @@ results_dir: results/
 use_task_class_weights: False
 use_concept_loss_weights: False
 use_foundation_model_representations_instead_of_concept_embeddings: False
-max_epochs: 1
+max_epochs: 50
 sub_concept_extraction_method: sae
 clustering_config:
   min_n_clusters: 2
@@ -14,12 +14,13 @@ clustering_config:
   warm_start: True
   turtle_epochs: 1000
 sae_config:
+  batch_size: 50000
   lr: 0.0003
   l1_coeff: 0
   beta1: 0.9
   beta2: 0.99
   max_grad_norm: 100000
-  dict_size: 6000
+  dict_size: 12288
   input_unit_norm: True
   n_batches_to_dead: 5
   n_epochs: 300
@@ -28,14 +29,14 @@ sae_config:
   aux_penalty: 0.03125
 foundation_models:
   - clip_vitl14
-use_wandb: False
+use_wandb: True
 only_match_subconcepts: True
 n_concepts_to_split: 55
 cem_embedding_size: 16
-cem_concept_loss_weight: 1
+cem_concept_loss_weight: 10
 hicem_embedding_size: 16
-hicem_concept_loss_weight: 1
-cbm_concept_loss_weight: 1
+hicem_concept_loss_weight: 10
+cbm_concept_loss_weight: 10
 evaluate_interventions: False
 evaluate_cems_with_discovered_concepts: False
 evaluate_models_with_perfect_discovered_concepts: False

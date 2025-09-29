@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
     if config["use_wandb"]:
         wandb.init(
-            project="cem-concept-discovery",
+            project="cem-concept-discovery-baselines",
             config=config,
             notes="Baseline run")
 

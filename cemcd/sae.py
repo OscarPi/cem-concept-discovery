@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import tqdm
+import numpy as np
 
 class BaseAutoencoder(nn.Module):
     """Base class for autoencoder models."""
@@ -132,13 +133,33 @@ def train_sae(sae, Zs, cfg):
     optimiser = torch.optim.Adam(sae.parameters(), lr=cfg["lr"], betas=(cfg["beta1"], cfg["beta2"]))
     pbar = tqdm.trange(cfg["n_epochs"])
 
-    for _ in pbar:
-        sae_output = sae(Zs)
+    dataset_size = Zs.shape[0]
+    batch_size = cfg["batch_size"]
+    n_batches = (dataset_size + batch_size - 1) // batch_size
 
-        loss = sae_output["loss"]
-        pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{sae_output['l0_norm']:.4f}", "L2": f"{sae_output['l2_loss']:.4f}", "L1": f"{sae_output['l1_loss']:.4f}", "L1_norm": f"{sae_output['l1_norm']:.4f}"})
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(sae.parameters(), cfg["max_grad_norm"])
-        sae.make_decoder_weights_and_grad_unit_norm()
-        optimiser.step()
-        optimiser.zero_grad()
+    for _ in pbar:
+        for i in range(n_batches):
+            start = i * batch_size
+            end = min(start + batch_size, dataset_size)
+            Z_batch = Zs[start:end]
+            sae_output = sae(Z_batch)
+
+            loss = sae_output["loss"]
+            pbar.set_postfix({"Loss": f"{loss.item():.4f}", "L0": f"{sae_output['l0_norm']:.4f}", "L2": f"{sae_output['l2_loss']:.4f}", "L1": f"{sae_output['l1_loss']:.4f}", "L1_norm": f"{sae_output['l1_norm']:.4f}"})
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(sae.parameters(), cfg["max_grad_norm"])
+            sae.make_decoder_weights_and_grad_unit_norm()
+            optimiser.step()
+            optimiser.zero_grad()
+
+    print("Calculating feature activations...")
+    feature_acts = np.zeros((dataset_size, sae.cfg["dict_size"]), dtype=np.float32)
+    sae.eval()
+    with torch.no_grad():
+        for i in tqdm.trange(n_batches):
+            start = i * batch_size
+            end = min(start + batch_size, dataset_size)
+            Z_batch = Zs[start:end]
+            sae_output = sae(Z_batch)
+            feature_acts[start:end] = sae_output["feature_acts"].detach().cpu().numpy()
+    return feature_acts

@@ -1,4 +1,4 @@
-description: MNIST_ADD concept splitting run
+description: MNIST_ADD concept splitting run (SAE)
 dataset: mnist_add
 dataset_dir: /datasets
 model_dir: /checkpoints
@@ -14,6 +14,7 @@ clustering_config:
   warm_start: True
   turtle_epochs: 1000
 sae_config:
+  batch_size: 50000
   lr: 0.0003
   l1_coeff: 0
   beta1: 0.9
@@ -29,14 +30,14 @@ sae_config:
 foundation_models:
 #  - dinov2_vitg14
   - clip_vitl14
-use_wandb: False
+use_wandb: True
 only_match_subconcepts: True
 n_concepts_to_split: 2
 cem_embedding_size: 16
-cem_concept_loss_weight: 1
+cem_concept_loss_weight: 10
 hicem_embedding_size: 16
-hicem_concept_loss_weight: 1
-cbm_concept_loss_weight: 1
+hicem_concept_loss_weight: 10
+cbm_concept_loss_weight: 10
 evaluate_interventions: True
 evaluate_cems_with_discovered_concepts: True
 evaluate_models_with_perfect_discovered_concepts: True

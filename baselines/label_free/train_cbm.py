@@ -11,7 +11,7 @@ from .utils import save_activations
 from .data_utils import get_targets_only
 from torch.utils.data import DataLoader, TensorDataset
 
-from cemcd.data import awa
+from cemcd.data import awa, kitchens
 
 def train_cbm_and_save(results_dir, dataset_dir, model_dir, dataset, device):
     clip_cutoff = 0.26
@@ -53,8 +53,12 @@ def train_cbm_and_save(results_dir, dataset_dir, model_dir, dataset, device):
             "Background is blue",
             "Background is purple",
         ]
+    elif dataset == "kitchens":
+        kitchens_data = kitchens.KitchensDatasets(dataset_dir=dataset_dir)
+        n_classes = kitchens_data.n_tasks
+        concepts = kitchens_data.ingredients
     else:
-        print("Unrecognised datasets. Valid datasets are cub, awa and shapes.")
+        print("Unrecognised datasets. Valid datasets are cub, awa, shapes and kitchens.")
         return
 
     #save activations and get save_paths
@@ -94,6 +98,8 @@ def train_cbm_and_save(results_dir, dataset_dir, model_dir, dataset, device):
         if highest[i]<=clip_cutoff:
             print("Deleting {}, CLIP top5:{:.3f}".format(concept, highest[i]))
     concepts = [concepts[i] for i in range(len(concepts)) if highest[i]>clip_cutoff]
+    if len(concepts) == 0:
+        raise ValueError("No concepts passed the CLIP cutoff.")
     
     #save memory by recalculating
     del clip_features
