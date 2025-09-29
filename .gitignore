@@ -27,3 +27,7 @@
 **/__pycache__
 /wandb
 /cache
+/user_study
+/BatchTopK
+/imagenet_naming
+/imagenet_hypernyms.ipynb

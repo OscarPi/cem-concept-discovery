@@ -7,17 +7,15 @@ class ConceptEmbeddingModel(base.BaseModel):
             self,
             n_concepts,
             n_tasks,
-            pre_concept_model,
             latent_representation_size,
+            embedding_size,
+            concept_loss_weight,
             task_class_weights,
-            concept_loss_weights,
-            concept_loss_weight=10):
+            concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
 
-        self.pre_concept_model = copy.deepcopy(pre_concept_model)
-
-        self.embedding_size = 16
+        self.embedding_size = embedding_size
         self.concept_loss_weight = concept_loss_weight
 
         self.concept_embedding_generators = torch.nn.ModuleList()
@@ -40,16 +38,11 @@ class ConceptEmbeddingModel(base.BaseModel):
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x, c_true=None, train=False):
-        if self.pre_concept_model is None:
-            latent = x
-        else:
-            latent = self.pre_concept_model(x)
-
         concept_embeddings = []
         predicted_concept_probs = []
 
         for generator in self.concept_embedding_generators:
-            embedding = generator(latent)
+            embedding = generator(x)
             concept_embeddings.append(embedding)
             predicted_concept_probs.append(self.sigmoid(self.scoring_function(embedding)))
 

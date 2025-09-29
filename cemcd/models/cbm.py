@@ -2,10 +2,17 @@ import torch
 from cemcd.models import base
 
 class ConceptBottleneckModel(base.BaseModel):
-    def __init__(self, n_concepts, n_tasks, latent_representation_size, task_class_weights, concept_loss_weights):
+    def __init__(
+            self,
+            n_concepts,
+            n_tasks,
+            latent_representation_size,
+            concept_loss_weight,
+            task_class_weights,
+            concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
-        self.concept_loss_weight = 10
+        self.concept_loss_weight = concept_loss_weight
 
         # Representations from the foundation model are precomputed and passed in the dataset.
         self.concept_model = torch.nn.Linear(latent_representation_size, self.n_concepts)

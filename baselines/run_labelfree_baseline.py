@@ -9,7 +9,7 @@ import argparse
 from label_free import cbm, utils
 from label_free.data_utils import get_target_model, get_data
 from label_free.train_cbm import train_cbm_and_save
-from cemcd.data import cub, awa, shapes
+from cemcd.data import cub, awa, shapes, kitchens
 from cemcd.metrics import calculate_concept_accuracies
 
 def parse_arguments():
@@ -61,13 +61,17 @@ def evaluate_cbm(load_dir, dataset_dir, model_dir, dataset, device):
         cub_data = cub.CUBDatasets(dataset_dir=dataset_dir)
         concept_test_ground_truth = cub_data.concept_test_ground_truth
     elif dataset == "awa":
-        concept_matches = {i: awa.SELECTED_CONCEPT_SEMANTICS.index(c).index(c) for i, c in enumerate(concepts)}
+        concept_matches = {i: awa.SELECTED_CONCEPT_SEMANTICS.index(c) for i, c in enumerate(concepts)}
         awa_data = awa.AwADatasets(dataset_dir=dataset_dir)
         concept_test_ground_truth = awa_data.labelfree_concept_test_ground_truth
     elif dataset == "shapes":
         concept_matches = {i: shapes.CONCEPT_NAMES.index(c) for i, c in enumerate(concepts)}
         shapes_data = shapes.ShapesDatasets(dataset_dir=dataset_dir)
         concept_test_ground_truth = shapes_data.concept_test_ground_truth
+    elif dataset == "kitchens":
+        kitchens_data = kitchens.KitchensDatasets(dataset_dir=dataset_dir)
+        concept_matches = {i: kitchens_data.ingredients.index(c) for i, c in enumerate(concepts)}
+        concept_test_ground_truth = kitchens_data.concept_test_ground_truth
 
     _, target_preprocess = get_target_model(device=device, model_dir=model_dir)
     model = cbm.load_cbm(load_dir, model_dir, device)

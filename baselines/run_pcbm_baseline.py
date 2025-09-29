@@ -16,7 +16,7 @@ from post_hoc.concepts import EasyDict
 from post_hoc.train_pcbm import run_linear_probe
 from post_hoc.train_pcbm_h import train_hybrid
 
-from cemcd.data import mnist, awa, cub, shapes, transforms
+from cemcd.data import mnist, awa, cub, shapes, transforms, kitchens
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -138,8 +138,11 @@ if __name__ == "__main__":
             "Background is blue",
             "Background is purple",
         ]
+    elif args.dataset == "kitchens":
+        datasets = kitchens.KitchensDatasets(dataset_dir=args.dataset_dir)
+        concept_list = datasets.ingredients
     else:
-        print("Invalid dataset: valid options are awa, cub, mnist, shapes.")
+        print("Invalid dataset: valid options are awa, cub, mnist, shapes, kitchens.")
         sys.exit()
 
     datasets.train_img_transform = clip_preprocess

@@ -1,28 +1,47 @@
-description: MNIST_ADD concept splitting run
+description: MNIST_ADD concept splitting run (SAE)
 dataset: mnist_add
 dataset_dir: /datasets
 model_dir: /checkpoints
 results_dir: results/
+use_task_class_weights: True
+use_concept_loss_weights: True
+use_foundation_model_representations_instead_of_concept_embeddings: False
+max_epochs: 300
+sub_concept_extraction_method: sae
+clustering_config:
+  min_n_clusters: 2
+  max_n_clusters: 50
+  warm_start: True
+  turtle_epochs: 1000
+sae_config:
+  batch_size: 50000
+  lr: 0.0003
+  l1_coeff: 0
+  beta1: 0.9
+  beta2: 0.99
+  max_grad_norm: 100000
+  dict_size: 12288
+  input_unit_norm: True
+  n_batches_to_dead: 5
+  n_epochs: 300
+  top_k: 32
+  top_k_aux: 512
+  aux_penalty: 0.03125
+foundation_models:
+#  - dinov2_vitg14
+  - clip_vitl14
+use_wandb: True
+only_match_subconcepts: True
+n_concepts_to_split: 2
+cem_embedding_size: 16
+cem_concept_loss_weight: 10
+hicem_embedding_size: 16
+hicem_concept_loss_weight: 10
+cbm_concept_loss_weight: 10
+evaluate_interventions: True
+evaluate_cems_with_discovered_concepts: True
+evaluate_models_with_perfect_discovered_concepts: True
+evaluate_unlabelled_concepts_baseline: True
 mnist_config:
   n_digits: 2
   max_digit: 6
-pre_concept_model: cnn
-pre_concept_cnn_config:
-  width: 28
-  height: 28
-  channels: 2
-cluster_representations: False
-max_epochs: 300
-min_n_clusters: 2
-max_n_clusters: 50
-foundation_models:
-  - dinov2
-  - clip
-use_wandb: False
-warm_start: True
-turtle_epochs: 1000
-use_task_class_weights: True
-use_concept_loss_weights: True
-only_match_subconcepts: True
-cluster_by_class: False
-n_concepts_to_split: 2
