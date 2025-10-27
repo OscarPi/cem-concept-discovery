@@ -9,7 +9,7 @@
 /.zshrc
 /cemcd.egg-info
 /datasets
-/lightning_logs
+**/lightning_logs
 /results
 /archive
 /.condarc

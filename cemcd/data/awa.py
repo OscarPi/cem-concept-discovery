@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from PIL import Image
 from cemcd.data import transforms
-from cemcd.data.base import Datasets
+from cemcd.data.base import Datasets, DataGetterWrapper
 
 ########################################################
 ## GENERAL DATASET GLOBAL VARIABLES
@@ -151,19 +151,21 @@ for sub_concept_name, super_concept_name in SUPER_CONCEPTS.items():
     SUB_CONCEPT_MAP[super_concept_index].append(SUB_CONCEPT_NAMES.index(sub_concept_name))
 
 class AwADatasets(Datasets):
-    def __init__(
-            self,
-            foundation_model=None,
-            dataset_dir="/datasets",
-            model_dir="/checkpoints",
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    def __init__(self, dataset_dir="/datasets", model_dir="/checkpoints"):
+        super().__init__(
+            n_concepts=len(SELECTED_CONCEPT_SEMANTICS) - len(SUB_CONCEPT_NAMES) + len(SUPER_CONCEPT_NAMES),
+            n_tasks=N_CLASSES,
+            representation_cache_dir=dataset_dir / "AwA2",
+            model_dir=model_dir
+        )
+
         dataset_dir = Path(dataset_dir)
         with (dataset_dir / "AwA2" / "train.pkl").open("rb") as f:
-            train_data = pickle.load(f)
+            self.train_data = pickle.load(f)
         with (dataset_dir / "AwA2" / "val.pkl").open("rb") as f:
-            val_data = pickle.load(f)
+            self.val_data = pickle.load(f)
         with (dataset_dir / "AwA2" / "test.pkl").open("rb") as f:
-            test_data = pickle.load(f)
+            self.test_data = pickle.load(f)
 
         def data_getter(data):
             def getter(idx):
@@ -194,33 +196,18 @@ class AwADatasets(Datasets):
                 ] + non_super_concepts
 
                 return image, class_label, torch.tensor(concept_annotations, dtype=torch.float32)
-            getter.length = len(data)
             return getter
 
-        train_img_transform = None
-        val_test_img_transform = None
-        if foundation_model is None:
-            train_img_transform = transforms.resnet_train
-            val_test_img_transform = transforms.resnet_val_test
+        self.data = {
+            "train": DataGetterWrapper(data_getter(self.train_data), len(self.train_data)),
+            "val": DataGetterWrapper(data_getter(self.val_data), len(self.val_data)),
+            "test": DataGetterWrapper(data_getter(self.test_data), len(self.test_data)),
+        }
 
-        super().__init__(
-            train_getter=data_getter(train_data),
-            val_getter=data_getter(val_data),
-            test_getter=data_getter(test_data),
-            foundation_model=foundation_model,
-            train_img_transform=train_img_transform,
-            val_test_img_transform=val_test_img_transform,
-            representation_cache_dir=dataset_dir / "AwA2",
-            model_dir=model_dir,
-            device=device
-        )
-
-        self.concept_bank = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], train_data)))
-        self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], test_data)))
-        self.labelfree_concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"]), test_data)))
+        self.concept_bank = np.stack(list(map(lambda d: np.array(d["attribute_label"], dtype=bool)[SUB_CONCEPT_INDICES], self.train_data)))
+        self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], self.test_data)))
+        self.labelfree_concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"]), self.test_data)))
 
         self.concept_names = SUB_CONCEPT_NAMES
 
         self.sub_concept_map = SUB_CONCEPT_MAP
-        self.n_concepts = len(SELECTED_CONCEPT_SEMANTICS) - len(SUB_CONCEPT_NAMES) + len(SUPER_CONCEPT_NAMES)
-        self.n_tasks = N_CLASSES

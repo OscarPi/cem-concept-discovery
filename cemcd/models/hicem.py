@@ -130,9 +130,9 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
             predicted_sub_concept_probs
         )
 
-        embeddings = torch.sum(embeddings * sub_concept_probs_after_interventions[:, :, torch.newaxis], dim=1)
+        mixed_embeddings = torch.sum(embeddings * sub_concept_probs_after_interventions[:, :, torch.newaxis], dim=1)
 
-        return predicted_sub_concept_probs, sub_concept_probs_after_interventions, embeddings
+        return predicted_sub_concept_probs, sub_concept_probs_after_interventions, mixed_embeddings, embeddings
 
     def forward(self, x, c_true=None, train=False):
         batch_size = x.shape[0]
@@ -146,6 +146,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
         all_mixed_embeddings = torch.zeros((batch_size, 0), device=device)
         all_predicted_top_concept_probs = torch.zeros((batch_size, 0), device=device)
         all_predicted_sub_concept_probs = torch.zeros((batch_size, 0), device=device)
+        all_sub_concept_embeddings = torch.zeros((batch_size, 0, self.embedding_size), device=device)
 
         for top_concept_idx, top_concept_generator in enumerate(self.top_concept_embedding_generators):
             top_concept_embeddings = top_concept_generator(x)
@@ -153,7 +154,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
             top_concept_negative_embeddings = top_concept_embeddings[:, self.embedding_size:]
 
             if self.sub_concepts[top_concept_idx][0] > 0:
-                predicted_sub_concept_probs, sub_concept_probs_after_interventions, top_positive_embeddings = self.run_sub_concept_module(
+                predicted_sub_concept_probs, sub_concept_probs_after_interventions, top_positive_embeddings, positive_sub_concept_embeddings = self.run_sub_concept_module(
                     top_concept_idx=top_concept_idx,
                     positive_subconcepts=True,
                     top_concept_embeddings=top_concept_positive_embeddings,
@@ -162,12 +163,13 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
                 all_predicted_sub_concept_probs = torch.cat((all_predicted_sub_concept_probs, predicted_sub_concept_probs), dim=1)
                 predicted_top_concept_probs_1 = torch.sum(self.softmax(200*predicted_sub_concept_probs - 100) * predicted_sub_concept_probs, dim=1)
                 top_concept_probs_1_after_sub_concept_interventions = torch.sum(self.softmax(200*sub_concept_probs_after_interventions - 100) * sub_concept_probs_after_interventions, dim=1)
+                all_sub_concept_embeddings = torch.cat((all_sub_concept_embeddings, positive_sub_concept_embeddings), dim=1)
             else:
                 top_positive_embeddings = top_concept_positive_embeddings
                 predicted_top_concept_probs_1 = self.sigmoid(self.scoring_function(top_positive_embeddings)).squeeze()
                 top_concept_probs_1_after_sub_concept_interventions = predicted_top_concept_probs_1
             if self.sub_concepts[top_concept_idx][1] > 0:
-                predicted_sub_concept_probs, sub_concept_probs_after_interventions, top_negative_embeddings = self.run_sub_concept_module(
+                predicted_sub_concept_probs, sub_concept_probs_after_interventions, top_negative_embeddings, negative_sub_concept_embeddings = self.run_sub_concept_module(
                     top_concept_idx=top_concept_idx,
                     positive_subconcepts=False,
                     top_concept_embeddings=top_concept_negative_embeddings,
@@ -176,6 +178,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
                 all_predicted_sub_concept_probs = torch.cat((all_predicted_sub_concept_probs, predicted_sub_concept_probs), dim=1)
                 predicted_top_concept_probs_2 = 1 - torch.sum(self.softmax(200*predicted_sub_concept_probs - 100) * predicted_sub_concept_probs, dim=1)
                 top_concept_probs_2_after_sub_concept_interventions = 1 - torch.sum(self.softmax(200*sub_concept_probs_after_interventions - 100) * sub_concept_probs_after_interventions, dim=1)
+                all_sub_concept_embeddings = torch.cat((all_sub_concept_embeddings, negative_sub_concept_embeddings), dim=1)
             else:
                 top_negative_embeddings = top_concept_negative_embeddings
                 predicted_top_concept_probs_2 = 1 - self.sigmoid(self.scoring_function(top_negative_embeddings)).squeeze()
@@ -198,4 +201,9 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
 
         predicted_labels = self.label_predictor(all_mixed_embeddings)
 
-        return predicted_concept_probs, predicted_labels, all_mixed_embeddings
+        return {
+            "predicted_concept_probs": predicted_concept_probs,
+            "predicted_labels": predicted_labels,
+            "top_concept_embeddings": all_mixed_embeddings,
+            "sub_concept_embeddings": all_sub_concept_embeddings
+        }

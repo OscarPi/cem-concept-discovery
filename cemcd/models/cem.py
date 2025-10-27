@@ -89,4 +89,8 @@ class ConceptEmbeddingModel(base.BaseModel):
         mixed_concept_embeddings = mixed_concept_embeddings.view((-1, self.embedding_size * self.n_concepts))
         predicted_labels = self.label_predictor(mixed_concept_embeddings)
 
-        return predicted_concept_probs, predicted_labels, mixed_concept_embeddings
+        return {
+            "predicted_concept_probs": predicted_concept_probs,
+            "predicted_labels": predicted_labels,
+            "top_concept_embeddings": mixed_concept_embeddings
+        }

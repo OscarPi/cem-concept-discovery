@@ -31,8 +31,8 @@ class BaseModel(lightning.LightningModule):
             train=train
         )
 
-        predicted_concept_probs = result[0]
-        predicted_labels = result[1]
+        predicted_concept_probs = result["predicted_concept_probs"]
+        predicted_labels = result["predicted_labels"]
 
         task_loss = self.loss_task(predicted_labels.squeeze(), y)
 

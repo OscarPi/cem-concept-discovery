@@ -62,4 +62,7 @@ class ConceptBottleneckModel(base.BaseModel):
 
         predicted_labels = self.label_predictor(concept_probs_after_interventions)
 
-        return predicted_concept_probs, predicted_labels
+        return {
+            "predicted_concept_probs": predicted_concept_probs,
+            "predicted_labels": predicted_labels
+        }

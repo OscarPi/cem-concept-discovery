@@ -6,31 +6,32 @@ import torch
 import lightning
 import cemcd.turtle as turtle
 import cemcd.sae as sae
+from cemcd.data import get_latent_representation_size
 
 def calculate_embeddings(model, dl):
     trainer = lightning.Trainer()
     results = trainer.predict(model, dl)
 
     c_pred = np.concatenate(
-        list(map(lambda x: x[0].detach().cpu().numpy(), results)),
+        list(map(lambda x: x["predicted_concept_probs"].detach().cpu().numpy(), results)),
         axis=0)
 
     c_embs = np.concatenate(
-        list(map(lambda x: x[2].detach().cpu().numpy(), results)),
+        list(map(lambda x: x["top_concept_embeddings"].detach().cpu().numpy(), results)),
         axis=0)
     c_embs = np.reshape(c_embs, (c_embs.shape[0], -1, model.embedding_size))
 
     y_pred = np.concatenate(
-        list(map(lambda x: x[1].detach().cpu().numpy(), results)),
+        list(map(lambda x: x["predicted_labels"].detach().cpu().numpy(), results)),
         axis=0)
 
     return c_pred, c_embs, y_pred
 
 def split_by_class(datasets, sample_filter):
-    train_dataset_size = len(datasets[0].train_dl().dataset)
+    train_dataset_size = len(datasets.data["train"])
     discovered_concept_labels = np.zeros((train_dataset_size, 0))
 
-    class_labels = datasets[0].train_y[sample_filter].cpu().detach().numpy()
+    class_labels = datasets.get_labels_and_concepts("train")[0][sample_filter].cpu().detach().numpy()
     classes = np.unique(class_labels).tolist()
 
     for cls in classes:
@@ -86,22 +87,22 @@ def split_with_sae(sae_config, train_dataset_size, sample_filter, Zs):
     return discovered_concept_labels
 
 def split_concepts(config, initial_models, datasets, concepts_to_split):
-    train_dataset_size = len(datasets[0].train_dl().dataset)
+    train_dataset_size = len(datasets.data["train"])
 
     predictions = []
     embeddings = []
     if config["use_foundation_model_representations_instead_of_concept_embeddings"]:
-        for dataset in datasets:
-            concept_labels = np.zeros((0, dataset.n_concepts), dtype=np.float32)
-            representations = np.zeros((0, dataset.latent_representation_size), dtype=np.float32)
-            for x, _, c in dataset.train_dl():
+        for foundation_model in config["foundation_models"]:
+            concept_labels = np.zeros((0, datasets.n_concepts), dtype=np.float32)
+            representations = np.zeros((0, get_latent_representation_size(foundation_model)), dtype=np.float32)
+            for x, _, c in datasets.get_dataloader("train", foundation_model=foundation_model):
                 representations = np.concatenate((representations, x.cpu().detach().numpy()), axis=0)
                 concept_labels = np.concatenate((concept_labels, c.cpu().detach().numpy()), axis=0)
             predictions.append(concept_labels)
             embeddings.append(representations)
     else:
-        for dataset, model in zip(datasets, initial_models):
-            c_pred, c_embs, _ = calculate_embeddings(model, dataset.train_dl())
+        for foundation_model, model in zip(config["foundation_models"], initial_models):
+            c_pred, c_embs, _ = calculate_embeddings(model, datasets.get_dataloader("train", foundation_model=foundation_model))
             predictions.append(c_pred)
             embeddings.append(c_embs)
     predictions = np.stack(predictions, axis=0)

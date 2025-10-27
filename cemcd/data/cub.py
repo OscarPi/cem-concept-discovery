@@ -783,7 +783,7 @@ class CUBDatasets(Datasets):
             device=device
         )
 
-        self.concept_bank = np.array(list(map(lambda d: concept_matrix[d["class_label"]], train_data)))
+        self.concept_bank = np.array(list(map(lambda d: concept_matrix[d["class_label"]], train_data)), dtype=bool)
         self.concept_test_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], test_data)))
         self.concept_names = CONCEPT_SEMANTICS
 

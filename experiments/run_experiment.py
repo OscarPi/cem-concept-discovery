@@ -8,6 +8,7 @@ import torch
 import lightning
 import sklearn.metrics
 from cemcd.training import train_cem, train_hicem
+from cemcd.data import get_latent_representation_size
 import cemcd.concept_discovery
 from experiment_utils import load_config, load_datasets, train_initial_cems, get_intervention_accuracies
 
@@ -250,27 +251,39 @@ def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
     n_discovered_sub_concepts = sum(map(sum, sub_concepts))
     trainer = lightning.Trainer()
 
-    unlabelled_results = {}
-    for dataset in datasets:
-        train_dataset_size = len(datasets[0].train_dl().dataset)
-        val_dataset_size = len(datasets[0].val_dl().dataset)
-        test_dataset_size = len(datasets[0].test_dl().dataset)
+    train_dataset_size = len(datasets.data["train"])
+    val_dataset_size = len(datasets.data["val"])
+    test_dataset_size = len(datasets.data["test"])
 
+    unlabelled_results = {}
+    for foundation_model in config["foundation_models"]:
+        train_dl = datasets.get_dataloader(
+            split="train",
+            foundation_model=foundation_model,
+            additional_concepts=np.full((train_dataset_size, n_discovered_sub_concepts), np.nan))
+        val_dl = datasets.get_dataloader(
+            split="val",
+            foundation_model=foundation_model,
+            additional_concepts=np.full((val_dataset_size, n_discovered_sub_concepts), np.nan))
+        test_dl = datasets.get_dataloader(
+            split="test",
+            foundation_model=foundation_model,
+            additional_concepts=np.full((test_dataset_size, n_discovered_sub_concepts), np.nan))
         model, _ = train_hicem(
             sub_concepts=sub_concepts,
-            n_tasks=dataset.n_tasks,
-            latent_representation_size=dataset.latent_representation_size,
+            n_tasks=datasets.n_tasks,
+            latent_representation_size=get_latent_representation_size(foundation_model),
             embedding_size=config["hicem_embedding_size"],
             concept_loss_weight=config["hicem_concept_loss_weight"],
-            train_dl=dataset.train_dl(np.full((train_dataset_size, n_discovered_sub_concepts), np.nan)),
-            val_dl=dataset.val_dl(np.full((val_dataset_size, n_discovered_sub_concepts), np.nan)),
-            test_dl=dataset.test_dl(np.full((test_dataset_size, n_discovered_sub_concepts), np.nan)),
-            save_path=run_dir / f"unlabelled_{dataset.foundation_model}_hicem.pth",
+            train_dl=train_dl,
+            val_dl=val_dl,
+            test_dl=test_dl,
+            save_path=run_dir / f"unlabelled_{foundation_model}_hicem.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],
             use_concept_loss_weights=config["use_concept_loss_weights"])
 
-        c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, dataset.train_dl(np.full((train_dataset_size, n_discovered_sub_concepts), np.nan)))
+        c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, train_dl)
 
         discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
 
@@ -278,11 +291,11 @@ def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
         for top_concept_idx in range(n_top_concepts):
             for _ in range(sum(sub_concepts[top_concept_idx])):
                 if config["only_match_subconcepts"]:
-                    _, matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept_idx], dataset, dataset.sub_concept_map[top_concept_idx])
+                    _, matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept_idx], datasets, datasets.sub_concept_map[top_concept_idx])
                 else:
-                    _, matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept_idx], dataset)
+                    _, matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept_idx], datasets)
                 discovered_concept_test_ground_truth = np.concatenate(
-                    (discovered_concept_test_ground_truth, np.expand_dims(dataset.concept_test_ground_truth[:, matching_concept_idx], axis=1)),
+                    (discovered_concept_test_ground_truth, np.expand_dims(datasets.concept_test_ground_truth[:, matching_concept_idx], axis=1)),
                     axis=1)
                 sub_concept_idx += 1
 

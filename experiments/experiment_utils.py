@@ -2,7 +2,7 @@ from pathlib import Path
 import yaml
 import torch
 import lightning
-from cemcd.data import awa, cub, mnist, shapes, kitchens, imagenet
+from cemcd.data import awa, cub, mnist, shapes, kitchens, imagenet, get_latent_representation_size
 from cemcd.training import train_cem
 
 def load_config(config_file):
@@ -12,78 +12,49 @@ def load_config(config_file):
 def load_datasets(config):
     if config["dataset"] == "mnist_add":
         mnist_config = config["mnist_config"]
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(mnist.MNISTDatasets(
-                n_digits=mnist_config["n_digits"],
-                max_digit=mnist_config["max_digit"],
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
+        return mnist.MNISTDatasets(
+            n_digits=mnist_config["n_digits"],
+            max_digit=mnist_config["max_digit"],
+            dataset_dir=config["dataset_dir"],
+            model_dir=config["model_dir"])
     elif config["dataset"] == "shapes":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(shapes.ShapesDatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
+        return shapes.ShapesDatasets(
+            dataset_dir=config["dataset_dir"],
+            model_dir=config["model_dir"])
     elif config["dataset"] == "cub":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(cub.CUBDatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
+        return cub.CUBDatasets(
+            dataset_dir=config["dataset_dir"],
+            model_dir=config["model_dir"])
     elif config["dataset"] == "awa":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(awa.AwADatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
+        return awa.AwADatasets(
+            dataset_dir=config["dataset_dir"],
+            model_dir=config["model_dir"])
     elif config["dataset"] == "kitchens":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            print(f"Running foundation model {foundation_model}.")
-            datasets.append(kitchens.KitchensDatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"],
-                model_dir=config["model_dir"]))
-        return datasets
+        return kitchens.KitchensDatasets(
+            dataset_dir=config["dataset_dir"],
+            model_dir=config["model_dir"])
     elif config["dataset"] == "imagenet":
-        datasets = []
-        for foundation_model in config["foundation_models"]:
-            datasets.append(imagenet.ImageNetDatasets(
-                foundation_model=foundation_model,
-                dataset_dir=config["dataset_dir"]))
-        return datasets
+        return imagenet.ImageNetDatasets(
+            dataset_dir=config["dataset_dir"])
     raise ValueError(f"Unrecognised dataset: {config['dataset']}")
 
 def train_initial_cems(config, datasets, run_dir):
     models = []
     test_results = []
-    for dataset in datasets:
+    for foundation_model in config["foundation_models"]:
         if run_dir is None:
             save_path = None
         else:
-            save_path = Path(run_dir) / f"initial_{dataset.foundation_model}_cem.pth"
+            save_path = Path(run_dir) / f"initial_{foundation_model}_cem.pth"
         model, test_result = train_cem(
-            n_concepts=dataset.n_concepts,
-            n_tasks=dataset.n_tasks,
-            latent_representation_size=dataset.latent_representation_size,
+            n_concepts=datasets.n_concepts,
+            n_tasks=datasets.n_tasks,
+            latent_representation_size=get_latent_representation_size(foundation_model),
             embedding_size=config["cem_embedding_size"],
             concept_loss_weight=config["cem_concept_loss_weight"],
-            train_dl=dataset.train_dl(),
-            val_dl=dataset.val_dl(),
-            test_dl=dataset.test_dl(),
+            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model),
+            val_dl=datasets.get_dataloader("val", foundation_model=foundation_model),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
             save_path=save_path,
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],

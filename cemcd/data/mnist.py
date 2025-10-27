@@ -111,7 +111,7 @@ class MNISTDatasets(Datasets):
                 concept_names.append(f"Digit {i} is {j}")
             self.sub_concept_map.append(sub_concepts)
 
-        self.concept_bank = np.stack(train_concepts, axis=1)
+        self.concept_bank = np.stack(train_concepts, axis=1, dtype=bool)
         self.concept_test_ground_truth = np.stack(test_concepts, axis=1)
         self.concept_names = concept_names
 

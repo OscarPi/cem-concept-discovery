@@ -1,5 +1,5 @@
 from pathlib import Path
-from tqdm import trange
+from tqdm import tqdm
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, TensorDataset, Dataset
@@ -7,111 +7,75 @@ import clip
 from cemcd.data import transforms
 
 class CEMDataset(Dataset):
-    def __init__(self, data_getter, transform=None, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        self.data_getter = data_getter
+    def __init__(self, data, transform=None, use_concepts=True, additional_concepts=None, include_provided_concepts=True):
+        self.data = data
         self.transform = transform
+        self.use_concepts = use_concepts
         self.additional_concepts = additional_concepts
-        self.use_provided_concepts = use_provided_concepts
-        self.no_concepts = no_concepts
+        self.include_provided_concepts = include_provided_concepts
 
     def __len__(self):
-        return self.data_getter.length
+        return len(self.data)
 
     def __getitem__(self, idx):
-        x, y, c = self.data_getter(idx)
+        x, y, c = self.data[idx]
 
         if self.transform:
             x = self.transform(x)
 
-        if not self.use_provided_concepts:
+        if not self.include_provided_concepts:
             c = torch.tensor([], dtype=torch.float32)
 
         if self.additional_concepts is not None:
             c = torch.concat((c, torch.from_numpy(self.additional_concepts[idx].astype(np.float32))))
 
-        if self.no_concepts:
+        if self.use_concepts:
+            return x, y, c
+        else:
             return x, y
-
-        return x, y, c
 
 class Datasets:
     def __init__(
             self,
-            train_getter,
-            val_getter,
-            test_getter,
-            foundation_model=None,
-            train_img_transform=None,
-            val_test_img_transform=None,
+            n_concepts,
+            n_tasks,
             representation_cache_dir=None,
-            model_dir="/checkpoints",
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
-        self.foundation_model = foundation_model
-        self.train_getter = train_getter
-        self.val_getter = val_getter
-        self.test_getter = test_getter
-        self.train_img_transform = train_img_transform
-        self.val_test_img_transform = val_test_img_transform
+            model_dir="/checkpoints"):
+        self.n_concepts = n_concepts
+        self.n_tasks = n_tasks
+        self._representation_cache_dir = Path(representation_cache_dir)
+        self._model_dir = Path(model_dir)
+        self._representation_cache = {}
+        self._label_and_concept_cache = {}
 
-        if self.foundation_model is not None:
-            cache_file = Path(representation_cache_dir) / f"{self.foundation_model}.pt"
-            if cache_file.exists():
+    def _run_foundation_model(self, foundation_model, split, custom_transform=None):
+        if custom_transform is None and foundation_model in self._representation_cache:
+            if split in self._representation_cache[foundation_model]:
+                return self._representation_cache[foundation_model][split]
+
+        if custom_transform is None:
+            cache_file = self._representation_cache_dir / foundation_model / f"{split}.pt"
+            if cache_file.exists(): 
                 print(f"Loading representations from {cache_file}.")
-                data = torch.load(cache_file, weights_only=True)
-                self.train_x = data["train_x"]
-                self.train_y = data["train_y"]
-                self.train_c = data["train_c"]
-                self.val_x = data["val_x"]
-                self.val_y = data["val_y"]
-                self.val_c = data["val_c"]
-                self.test_x = data["test_x"]
-                self.test_y = data["test_y"]
-                self.test_c = data["test_c"]
-            else:
-                self.train_x, self.train_y, self.train_c = self.run_foundation_model(train_img_transform, model_dir, train_getter, device)
-                self.val_x, self.val_y, self.val_c = self.run_foundation_model(val_test_img_transform, model_dir, val_getter, device)
-                self.test_x, self.test_y, self.test_c = self.run_foundation_model(val_test_img_transform, model_dir, test_getter, device)
-                data = {
-                    "train_x": self.train_x,
-                    "train_y": self.train_y,
-                    "train_c": self.train_c,
-                    "val_x": self.val_x,
-                    "val_y": self.val_y,
-                    "val_c": self.val_c,
-                    "test_x": self.test_x,
-                    "test_y": self.test_y,
-                    "test_c": self.test_c
-                }
-                torch.save(data, cache_file)
-        else:
-            self.train_x = None
-            self.train_y = None
-            self.train_c = None
-            self.val_x = None
-            self.val_y = None
-            self.val_c = None
-            self.test_x = None
-            self.test_y = None
-            self.test_c = None
+                if foundation_model not in self._representation_cache:
+                    self._representation_cache[foundation_model] = {}
+                self._representation_cache[foundation_model][split] = torch.load(cache_file, weights_only=True)
+                return self._representation_cache[foundation_model][split]
 
-        self.n_concepts = None
-        self.n_tasks = None
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
 
         if foundation_model == "dinov2_vitg14":
-            self.latent_representation_size = 1536
-        elif foundation_model == "clip_vitl14":
-            self.latent_representation_size = 768
-        else:
-            self.latent_representation_size = None
-
-    def run_foundation_model(self, img_transform, model_dir, data_getter, device):
-        if self.foundation_model == "dinov2_vitg14":
-            torch.hub.set_dir(Path(model_dir) / "dinov2")
+            torch.hub.set_dir(self._model_dir / "dinov2")
             model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitg14').to(device)
             model.eval()
             transform = transforms.dino_transforms
-        elif self.foundation_model == "clip_vitl14":
-            ckpt_dir = Path(model_dir) / "clip"
+        elif foundation_model == "clip_vitl14":
+            ckpt_dir = self._model_dir / "clip"
             model, transform = clip.load("ViT-L/14", device=device, download_root=ckpt_dir)
             model.eval()
             model = model.encode_image
@@ -120,93 +84,82 @@ class Datasets:
         else:
             raise ValueError(f"Unrecognised foundation model: {self.foundation_model}.")
 
-        if img_transform is not None:
-            transform = img_transform
+        if custom_transform is not None:
+            transform = custom_transform
 
+        data = self.data[split]
         xs = []
-        ys = []
-        cs = []
         with torch.no_grad():
-            for i in trange(data_getter.length):
-                img, y, c = data_getter(i)
+            for img, _, _ in tqdm(data):
                 img = transform(img)
 
                 img = img[torch.newaxis, ...].to(device)
                 x = model(img).detach().cpu().squeeze().float()
 
                 xs.append(x)
-                ys.append(y)
-                cs.append(c)
-        return torch.stack(xs), torch.tensor(ys), torch.stack(cs)
-    
-    def train_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        if self.train_x is not None and self.train_y is not None and self.train_c is not None:
-            c = self.train_c
-            if not use_provided_concepts:
-                c = torch.empty(size=(self.train_c.shape[0], 0), dtype=torch.float32)
+        xs = torch.stack(xs)
+
+        if custom_transform is None:
+            cache_dir = self._representation_cache_dir / foundation_model
+            cache_dir.mkdir(exist_ok=True)
+            cache_file = cache_dir / f"{split}.pt"
+            torch.save(xs, cache_file)
+            if foundation_model not in self._representation_cache:
+                self._representation_cache[foundation_model] = {}
+            self._representation_cache[foundation_model][split] = xs
+
+        return xs
+
+    def get_labels_and_concepts(self, split):
+        if split in self._label_and_concept_cache:
+            return self._label_and_concept_cache[split]
+
+        ys = []
+        cs = []
+        for _, y, c in tqdm(self.data[split]):
+            ys.append(y)
+            cs.append(c)
+
+        self._label_and_concept_cache[split] = (torch.tensor(ys), torch.stack(cs))
+        return self._label_and_concept_cache[split]
+
+    def get_dataloader(self, split, foundation_model=None, transform=None, use_concepts=True, additional_concepts=None, include_provided_concepts=True):
+        if foundation_model is None:
+            dataset = CEMDataset(
+                data=self.data[split],
+                transform=transform,
+                use_concepts=use_concepts,
+                additional_concepts=additional_concepts,
+                include_provided_concepts=include_provided_concepts)
+        else:
+            x = self._run_foundation_model(foundation_model, split, transform)
+            y, c = self.get_labels_and_concepts(split)
+
+            if not include_provided_concepts:
+                c = torch.empty(size=(c.shape[0], 0), dtype=torch.float32)
             if additional_concepts is not None:
                 c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
-            if no_concepts:
-                dataset = TensorDataset(self.train_x, self.train_y)
+            if use_concepts:
+                dataset = TensorDataset(x, y, c)
             else:
-                dataset = TensorDataset(self.train_x, self.train_y, c)
-        else:
-            dataset = CEMDataset(
-                data_getter=self.train_getter,
-                transform=self.train_img_transform,
-                additional_concepts=additional_concepts,
-                use_provided_concepts=use_provided_concepts,
-                no_concepts=no_concepts)
+                dataset = TensorDataset(x, y)
 
         return DataLoader(
             dataset,
             batch_size=256,
             num_workers=7)
 
-    def val_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        if self.val_x is not None and self.val_y is not None and self.val_c is not None:
-            c = self.val_c
-            if not use_provided_concepts:
-                c = torch.empty(size=(self.val_c.shape[0], 0), dtype=torch.float32)
-            if additional_concepts is not None:
-                c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
-            if no_concepts:
-                dataset = TensorDataset(self.val_x, self.val_y)
-            else:
-                dataset = TensorDataset(self.val_x, self.val_y, c)
-        else:
-            dataset = CEMDataset(
-                data_getter=self.val_getter,
-                transform=self.val_test_img_transform,
-                additional_concepts=additional_concepts,
-                use_provided_concepts=use_provided_concepts,
-                no_concepts=no_concepts)
+class DataGetterWrapper:
+    def __init__(self, getter, length):
+        self.getter = getter
+        self.length = length
 
-        return DataLoader(
-            dataset,
-            batch_size=256,
-            num_workers=7)
-    
-    def test_dl(self, additional_concepts=None, use_provided_concepts=True, no_concepts=False):
-        if self.test_x is not None and self.test_y is not None and self.test_c is not None:
-            c = self.test_c
-            if not use_provided_concepts:
-                c = torch.empty(size=(self.test_c.shape[0], 0), dtype=torch.float32)
-            if additional_concepts is not None:
-                c = torch.concatenate((c, torch.from_numpy(additional_concepts.astype(np.float32))), axis=1)
-            if no_concepts:
-                dataset = TensorDataset(self.test_x, self.test_y)
-            else:
-                dataset = TensorDataset(self.test_x, self.test_y, c)
-        else:
-            dataset = CEMDataset(
-                data_getter=self.test_getter,
-                transform=self.val_test_img_transform,
-                additional_concepts=additional_concepts,
-                use_provided_concepts=use_provided_concepts,
-                no_concepts=no_concepts)
-        
-        return DataLoader(
-                dataset,
-                batch_size=256,
-                num_workers=7)
+    def __getitem__(self, index):
+        return self.getter(index)
+
+    def __len__(self):
+        return self.length
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]

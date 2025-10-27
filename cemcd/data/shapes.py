@@ -78,7 +78,7 @@ def calculate_concepts(example):
     return torch.tensor(concept_labels, dtype=torch.float32)
 
 def make_concept_bank(examples):
-    concept_bank = np.zeros((len(examples), 12))
+    concept_bank = np.zeros((len(examples), 12), dtype=bool)
 
     for idx, example in enumerate(examples):
         if example["shape"] == "square":
