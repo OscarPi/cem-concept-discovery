@@ -49,6 +49,7 @@ def calculate_concept_loss_weights(n_concepts, train_dl):
 
 def train_cem(
         n_concepts,
+        concept_names,
         n_tasks,
         latent_representation_size,
         embedding_size,
@@ -68,6 +69,7 @@ def train_cem(
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
+        concept_names=concept_names,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
         embedding_size=embedding_size,
@@ -101,7 +103,7 @@ def train_cem(
     return model, test_results
 
 def train_hicem(
-        sub_concepts,
+        concepts,
         n_tasks,
         latent_representation_size,
         embedding_size,
@@ -115,14 +117,14 @@ def train_hicem(
         use_concept_loss_weights=False):
     task_class_weights = None
     concept_loss_weights = None
-    n_concepts = len(sub_concepts) + sum(map(sum, sub_concepts))
+    n_concepts = len(concepts)
     if use_task_class_weights:
         task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
     if use_concept_loss_weights:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
 
     model = HierarchicalConceptEmbeddingModel(
-        sub_concepts=sub_concepts,
+        concepts=concepts,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
         embedding_size=embedding_size,
@@ -192,6 +194,7 @@ def load_cem(
 
 def train_cbm(
         n_concepts,
+        concept_names,
         n_tasks,
         latent_representation_size,
         concept_loss_weight,
@@ -211,6 +214,7 @@ def train_cbm(
 
     model = ConceptBottleneckModel(
         n_concepts=n_concepts,
+        concept_names=concept_names,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
         concept_loss_weight=concept_loss_weight,

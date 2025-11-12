@@ -48,7 +48,7 @@ def get_accuracies(test_results, n_provided_concepts, model_name):
     provided_concept_aucs = []
     discovered_concept_aucs = []
     for key, value in test_results.items():
-        if key[:7] == "concept":
+        if key[:7] == "con":
             n = int(key.split("_")[1])
             if n <= n_provided_concepts:
                 if key[-3:] == "auc":
@@ -107,36 +107,36 @@ def create_run_name(results_dir, dataset):
                     return run_name
     raise RuntimeError("All run names have been used.")
 
-def get_provided_and_discovered_intervention_accuracies(models, datasets, discovered_concept_test_ground_truth, model_name_prefix, model_type="hicem"):
-    n_provided_concepts = datasets[0].n_concepts
+def get_provided_and_discovered_intervention_accuracies(models, foundation_models, datasets, discovered_concept_test_ground_truth, model_name_prefix, model_type="hicem"):
+    n_provided_concepts = datasets.n_concepts
     n_discovered_concepts = discovered_concept_test_ground_truth.shape[1]
     all_concepts = range(n_provided_concepts + n_discovered_concepts)
     provided_concepts = range(n_provided_concepts)
     discovered_concepts = list(range(n_provided_concepts, n_provided_concepts + n_discovered_concepts))
 
     results = {}
-    for dataset, model in zip(datasets, models):
-        model_name = f"{model_name_prefix}_{(dataset.foundation_model)}_{model_type}"
+    for foundation_model, model in zip(foundation_models, models):
+        model_name = f"{model_name_prefix}_{foundation_model}_{model_type}"
 
         results[f"{model_name}_discovered_concept_interventions_cumulative"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
             concepts_to_intervene=discovered_concepts,
             one_at_a_time=False)
         results[f"{model_name}_discovered_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
             concepts_to_intervene=discovered_concepts,
             one_at_a_time=True)
 
         results[f"{model_name}_all_concept_interventions_cumulative"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
             concepts_to_intervene=all_concepts,
             one_at_a_time=False)
         results[f"{model_name}_provided_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
             concepts_to_intervene=provided_concepts,
             one_at_a_time=True)
 
@@ -145,20 +145,21 @@ def get_provided_and_discovered_intervention_accuracies(models, datasets, discov
 def test_concept_interventions(
         initial_models,
         models_with_discovered_concepts,
+        foundation_models,
         datasets,
         discovered_concept_test_ground_truth):
     results = {}
 
-    for dataset, model in zip(datasets, initial_models):
-        model_name = (dataset.foundation_model) + "_cem"
+    for foundation_model, model in zip(foundation_models, initial_models):
+        model_name = foundation_model + "_cem"
         intervention_accuracies_cumulative = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
             concepts_to_intervene=range(model.n_concepts),
             one_at_a_time=False)
         intervention_accuracies_one_at_a_time = get_intervention_accuracies(
             model=model,
-            test_dl=dataset.test_dl(),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
             concepts_to_intervene=range(model.n_concepts),
             one_at_a_time=True)
         results[f"initial_{model_name}_interventions_cumulative"] = intervention_accuracies_cumulative
@@ -167,6 +168,7 @@ def test_concept_interventions(
     results.update(
         get_provided_and_discovered_intervention_accuracies(
             models=models_with_discovered_concepts,
+            foundation_models=foundation_models,
             datasets=datasets,
             discovered_concept_test_ground_truth=discovered_concept_test_ground_truth,
             model_name_prefix="enhanced"
@@ -205,7 +207,7 @@ def match_discovered_concepts_to_concept_bank(
         n_discovered_sub_concepts, 
         concept_bank,
         concept_test_ground_truth,
-        concept_names,
+        concept_bank_concept_names,
         sub_concept_map=None):
     test_datset_size = concept_test_ground_truth.shape[0]
     n_concepts_discovered = discovered_concept_labels.shape[1]
@@ -238,7 +240,7 @@ def match_discovered_concepts_to_concept_bank(
         if best_roc_auc > 0.7 and best_roc_auc > discovered_concept_roc_aucs[best_discovered_concept_idx]:
             discovered_concept_train_ground_truth[:, best_discovered_concept_idx] = true_concept_labels
             discovered_concept_test_ground_truth[:, best_discovered_concept_idx] = concept_test_ground_truth[:, true_concept_idx]
-            discovered_concept_semantics[best_discovered_concept_idx] = concept_names[true_concept_idx]
+            discovered_concept_semantics[best_discovered_concept_idx] = concept_bank_concept_names[true_concept_idx]
             discovered_concept_roc_aucs[best_discovered_concept_idx] = best_roc_auc
 
     return (discovered_concept_train_ground_truth,
@@ -319,17 +321,17 @@ def run_experiment(run_dir, config):
 
     datasets = load_datasets(config)
 
-    train_dataset_size = len(datasets[0].train_dl().dataset)
-    val_dataset_size = len(datasets[0].val_dl().dataset)
-    test_dataset_size = len(datasets[0].test_dl().dataset)
+    train_dataset_size = len(datasets.data["train"])
+    val_dataset_size = len(datasets.data["val"])
+    test_dataset_size = len(datasets.data["test"])
 
     log = lambda results: log_results(config, run_dir, results)
 
     if not config["use_foundation_model_representations_instead_of_concept_embeddings"]:
         initial_models, test_results = train_initial_cems(config, datasets, run_dir)
 
-        for dataset, test_result in zip(datasets, test_results):
-            model_results = get_accuracies(test_result, dataset.n_concepts, f"initial_{dataset.foundation_model}_cem")
+        for foundation_model, test_result in zip(config["foundation_models"], test_results):
+            model_results = get_accuracies(test_result, datasets.n_concepts, f"initial_{foundation_model}_cem")
             log(model_results)
     else:
         initial_models = []
@@ -348,57 +350,114 @@ def run_experiment(run_dir, config):
         discovered_concept_roc_aucs) = match_discovered_concepts_to_concept_bank(
             discovered_concept_labels=discovered_concept_labels,
             n_discovered_sub_concepts=n_discovered_sub_concepts,
-            concept_bank=datasets[0].concept_bank,
-            concept_test_ground_truth=datasets[0].concept_test_ground_truth,
-            concept_names=datasets[0].concept_names,
-            sub_concept_map=datasets[0].sub_concept_map if config["only_match_subconcepts"] else None)
+            concept_bank=datasets.concept_bank,
+            concept_test_ground_truth=datasets.concept_test_ground_truth,
+            concept_bank_concept_names=datasets.concept_bank_concept_names,
+            sub_concept_map=datasets.sub_concept_map if config["only_match_subconcepts"] else None)
     else:
         discovered_concept_train_ground_truth = np.full((train_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)
         discovered_concept_test_ground_truth = np.full((test_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)
         discovered_concept_semantics = [None] * sum(n_interpreted_sub_concepts)
         discovered_concept_roc_aucs = [0] * sum(n_interpreted_sub_concepts)
-    
+
+    matched_mask = np.array(discovered_concept_roc_aucs) > 0
+    interpreted_discovered_concept_labels = discovered_concept_labels[:, matched_mask]
+    discovered_concept_train_ground_truth = discovered_concept_train_ground_truth[:, matched_mask]
+    discovered_concept_test_ground_truth = discovered_concept_test_ground_truth[:, matched_mask]
+    discovered_concept_semantics = [sem for sem, m in zip(discovered_concept_semantics, matched_mask) if m]
+    discovered_concept_roc_aucs = [auc for auc, m in zip(discovered_concept_roc_aucs, matched_mask) if m]
+    n_interpreted_sub_concepts = []
+    offset = 0
+    for n in n_discovered_sub_concepts:
+        n_interpreted_sub_concepts.append(int(np.sum(matched_mask[offset:offset + n])))
+        offset += n
+
+
     log({"n_discovered_sub_concepts": n_discovered_sub_concepts,
+         "n_interpreted_sub_concepts": n_interpreted_sub_concepts,
          "discovered_concept_semantics": list(map(str, discovered_concept_semantics)),
          "discovered_concept_roc_aucs": list(map(float, discovered_concept_roc_aucs)),})
 
     np.savez(run_dir / "discovered_concepts.npz",
         discovered_concept_labels=discovered_concept_labels,
+        matched_mask=matched_mask,
         discovered_concept_train_ground_truth=discovered_concept_train_ground_truth,
         discovered_concept_test_ground_truth=discovered_concept_test_ground_truth)
 
-    matched_mask = np.array(discovered_concept_roc_aucs) > 0
-    discovered_concept_labels = discovered_concept_labels[:, matched_mask]
-    discovered_concept_train_ground_truth = discovered_concept_train_ground_truth[:, matched_mask]
-    discovered_concept_test_ground_truth = discovered_concept_test_ground_truth[:, matched_mask]
-    n_interpreted_sub_concepts = []
-    for n in n_discovered_sub_concepts:
-        n_interpreted_sub_concepts.append(np.sum(matched_mask[:n]))
-        matched_mask = matched_mask[n:]
+    train_c = []
+    for _, _, c in datasets.data["train"]:
+        train_c.append(c.detach().cpu().numpy())
+    train_c = np.stack(train_c)
 
-    sub_concepts = list(map(lambda n: (n, 0), n_interpreted_sub_concepts)) # We don't split negative embeddings
+    test_c = []
+    for _, _, c in datasets.data["test"]:
+        test_c.append(c)
+    test_c = np.stack(test_c)
+
+    hicem_concepts = []
+    discovered_concepts = []
+    next_discovered_concept_idx = datasets.n_concepts
+    catch_all_concepts = []
+    next_catch_all_concept_idx = datasets.n_concepts + sum(n_interpreted_sub_concepts)
+    for idx, n in enumerate(n_interpreted_sub_concepts):
+        catch_all = []
+        if n < len(datasets.sub_concept_map[idx]):
+            catch_all_concepts.append({
+                "name": f"catch_all_{datasets.concept_names[idx]}",
+                "leaf_sub_concepts": []
+            })
+            catch_all.append(next_catch_all_concept_idx)
+            next_catch_all_concept_idx += 1
+            start = next_discovered_concept_idx - datasets.n_concepts
+            end = start + n
+            catch_all_labels = np.zeros((train_dataset_size, 1))
+            sample_filter = train_c[:, idx] == 1
+            catch_all_labels[sample_filter, 0] = 1 - np.max(interpreted_discovered_concept_labels[sample_filter, start:end], axis=1)
+            interpreted_discovered_concept_labels = np.concatenate(
+                (interpreted_discovered_concept_labels, catch_all_labels),
+                axis=1)
+            
+            test_catch_all_labels = np.zeros((test_dataset_size, 1))
+            sample_filter = test_c[:, idx] == 1
+            test_catch_all_labels[sample_filter, 0] = 1 - np.max(discovered_concept_test_ground_truth[sample_filter, start:end], axis=1)
+            discovered_concept_test_ground_truth = np.concatenate(
+                (discovered_concept_test_ground_truth, test_catch_all_labels),
+                axis=1)
+        hicem_concepts.append({
+            "name": datasets.concept_names[idx],
+            "leaf_sub_concepts": list(range(next_discovered_concept_idx, next_discovered_concept_idx + n)) + catch_all
+        })
+        for offset in range(n):
+            discovered_concepts.append({
+                "name": f"{discovered_concept_semantics[next_discovered_concept_idx - datasets.n_concepts + offset]}",
+                "leaf_sub_concepts": []
+            })
+        next_discovered_concept_idx += n
+    hicem_concepts.extend(discovered_concepts)
+
     models_with_discovered_concepts = []
-    for dataset in datasets:
+    for foundation_model in config["foundation_models"]:
         model, test_results = train_hicem(
-            sub_concepts=sub_concepts,
-            n_tasks=dataset.n_tasks,
-            latent_representation_size=dataset.latent_representation_size,
+            concepts=hicem_concepts,
+            n_tasks=datasets.n_tasks,
+            latent_representation_size=get_latent_representation_size(foundation_model),
             embedding_size=config["hicem_embedding_size"],
             concept_loss_weight=config["hicem_concept_loss_weight"],
-            train_dl=dataset.train_dl(discovered_concept_labels),
-            val_dl=dataset.val_dl(np.full((val_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)),
-            test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-            save_path=run_dir / f"enhanced_{dataset.foundation_model}_hicem.pth",
+            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=interpreted_discovered_concept_labels),
+            val_dl=datasets.get_dataloader("val", foundation_model=foundation_model, additional_concepts=np.full((val_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
+            save_path=run_dir / f"enhanced_{foundation_model}_hicem.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],
             use_concept_loss_weights=config["use_concept_loss_weights"])
-        log(get_accuracies(test_results, dataset.n_concepts, f"enhanced_{dataset.foundation_model}_hicem"))
+        log(get_accuracies(test_results, datasets.n_concepts, f"enhanced_{foundation_model}_hicem"))
         models_with_discovered_concepts.append(model)
 
     if config["evaluate_interventions"]:
         intervention_results = test_concept_interventions(
             initial_models=initial_models,
             models_with_discovered_concepts=models_with_discovered_concepts,
+            foundation_models=config["foundation_models"],
             datasets=datasets,
             discovered_concept_test_ground_truth=discovered_concept_test_ground_truth)
         log(intervention_results)
@@ -412,7 +471,7 @@ def run_experiment(run_dir, config):
                 latent_representation_size=dataset.latent_representation_size,
                 embedding_size=config["cem_embedding_size"],
                 concept_loss_weight=config["cem_concept_loss_weight"],
-                train_dl=dataset.train_dl(discovered_concept_labels),
+                train_dl=dataset.train_dl(interpreted_discovered_concept_labels),
                 val_dl=dataset.val_dl(np.full((val_dataset_size, sum(n_interpreted_sub_concepts)), np.nan)),
                 test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
                 save_path=run_dir / f"enhanced_{dataset.foundation_model}_cem.pth",
@@ -434,7 +493,7 @@ def run_experiment(run_dir, config):
         models_with_perfect_discovered_concepts = []
         for dataset in datasets:
             model, test_results = train_hicem(
-                sub_concepts=sub_concepts,
+                concepts=hicem_concepts,
                 n_tasks=dataset.n_tasks,
                 latent_representation_size=dataset.latent_representation_size,
                 embedding_size=config["hicem_embedding_size"],

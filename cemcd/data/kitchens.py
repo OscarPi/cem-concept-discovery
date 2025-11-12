@@ -55,7 +55,8 @@ class KitchensDatasets(Datasets):
             dataset_info = json.load(f)
 
         ingredient_groups = sorted(dataset_info["ingredient_groups"].keys())
-        top_level_concepts = ingredient_groups + sorted([i for i in dataset_info["object_counts"]["ingredient_counts"].keys() if i not in ingredient_groups])
+        grouped_ingredients = [ing for group in dataset_info["ingredient_groups"].values() for ing in group]
+        top_level_concepts = ingredient_groups + sorted([i for i in dataset_info["object_counts"]["ingredient_counts"].keys() if i not in grouped_ingredients])
 
         super().__init__(
             n_concepts=len(top_level_concepts),
@@ -103,6 +104,8 @@ class KitchensDatasets(Datasets):
             "val": DataGetterWrapper(data_getter(dataset_dir / "val", dataset_info["val_size"]), dataset_info["val_size"]),
             "test": DataGetterWrapper(data_getter(dataset_dir / "test", dataset_info["test_size"]), dataset_info["test_size"]),
         }
+
+        self.concept_names = top_level_concepts
 
         self.sub_concept_names = []
         self.sub_concept_map = []
@@ -169,8 +172,15 @@ class KitchensDatasets(Datasets):
                         if image_contains_ingredient(channel1, channel2, manifest, self.dataset_info, ingredient):
                             concept_annotation = True
                             break
-                elif image_contains_ingredient(channel1, channel2, manifest, self.dataset_info, concept_name):
-                    concept_annotation = True
+                elif concept_name in self.dataset_info["object_counts"]["ingredient_counts"].keys():
+                    if image_contains_ingredient(channel1, channel2, manifest, self.dataset_info, concept_name):
+                        concept_annotation = True
+                else:
+                    if concept_name in manifest:
+                        id = hex_str_to_id(manifest[concept_name])
+                        if np.any(channel1 == id) or np.any(channel2 == id):
+                            concept_annotation = True
+
                 concept_bank[concept_idx].append(concept_annotation)
 
         return np.stack(concept_bank, axis=1, dtype=bool)

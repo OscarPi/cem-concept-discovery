@@ -48,6 +48,7 @@ def train_initial_cems(config, datasets, run_dir):
             save_path = Path(run_dir) / f"initial_{foundation_model}_cem.pth"
         model, test_result = train_cem(
             n_concepts=datasets.n_concepts,
+            concept_names=datasets.concept_names,
             n_tasks=datasets.n_tasks,
             latent_representation_size=get_latent_representation_size(foundation_model),
             embedding_size=config["cem_embedding_size"],

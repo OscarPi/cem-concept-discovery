@@ -149,7 +149,7 @@ class ShapesDatasets(Datasets):
             [10, 11]
         ]
     
-        self.concept_names = CONCEPT_NAMES
+        self.concept_bank_concept_names = CONCEPT_NAMES
 
         self.n_concepts = 5
         self.n_tasks = 48

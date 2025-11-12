@@ -8,8 +8,7 @@ import pickle
 import numpy as np
 import torch
 from PIL import Image
-from cemcd.data import transforms
-from cemcd.data.base import Datasets
+from cemcd.data.base import Datasets, DataGetterWrapper
 
 ########################################################
 ## GENERAL DATASET GLOBAL VARIABLES
@@ -733,21 +732,23 @@ def compress_colour_concepts(concepts):
     return compressed_concepts
 
 class CUBDatasets(Datasets):
-    def __init__(
-            self,
-            foundation_model=None,
-            dataset_dir="/datasets",
-            model_dir="/checkpoints",
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+    def __init__(self, dataset_dir="/datasets", model_dir="/checkpoints"):
         base_dir = Path(dataset_dir) / "CUB"      
+        super().__init__(
+            n_concepts=len(COMPRESSED_CONCEPT_SEMANTICS),
+            n_tasks=N_CLASSES,
+            representation_cache_dir=base_dir,
+            model_dir=model_dir
+        )
+    
         image_dir = base_dir / "images"
         data_dir = base_dir / "class_attr_data_10"
         with (data_dir / "train.pkl").open("rb") as f:
-            train_data = pickle.load(f)
+            self.train_data = pickle.load(f)
         with (data_dir / "val.pkl").open("rb") as f:
-            val_data = pickle.load(f)
+            self.val_data = pickle.load(f)
         with (data_dir / "test.pkl").open("rb") as f:
-            test_data = pickle.load(f)
+            self.test_data = pickle.load(f)
 
         concept_matrix = np.loadtxt(base_dir / "attributes" / "class_attribute_labels_continuous.txt", dtype=np.float32)
         concept_matrix = (concept_matrix >= 50).astype(np.float32)
@@ -762,32 +763,18 @@ class CUBDatasets(Datasets):
                 concept_labels = compress_colour_concepts(concept_matrix[class_label])
 
                 return image, class_label, torch.tensor(concept_labels, dtype=torch.float32)
-            getter.length = len(data)
             return getter
 
-        train_img_transform = None
-        val_test_img_transform = None
-        if foundation_model is None:
-            train_img_transform = transforms.resnet_train
-            val_test_img_transform = transforms.resnet_val_test
+        self.data = {
+            "train": DataGetterWrapper(data_getter(self.train_data), len(self.train_data)),
+            "val": DataGetterWrapper(data_getter(self.val_data), len(self.val_data)),
+            "test": DataGetterWrapper(data_getter(self.test_data), len(self.test_data)),
+        }
 
-        super().__init__(
-            train_getter=data_getter(train_data),
-            val_getter=data_getter(val_data),
-            test_getter=data_getter(test_data),
-            foundation_model=foundation_model,
-            train_img_transform=train_img_transform,
-            val_test_img_transform=val_test_img_transform,
-            representation_cache_dir=Path(dataset_dir) / "CUB",
-            model_dir=model_dir,
-            device=device
-        )
-
-        self.concept_bank = np.array(list(map(lambda d: concept_matrix[d["class_label"]], train_data)), dtype=bool)
-        self.concept_test_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], test_data)))
-        self.concept_names = CONCEPT_SEMANTICS
-
-        self.n_concepts = len(COMPRESSED_CONCEPT_SEMANTICS)
-        self.n_tasks = N_CLASSES
+        self.concept_bank = np.array(list(map(lambda d: concept_matrix[d["class_label"]], self.train_data)), dtype=bool)
+        self.concept_test_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], self.test_data)))
+        self.concept_bank_concept_names = CONCEPT_SEMANTICS
+        
+        self.concept_names = COMPRESSED_CONCEPT_SEMANTICS
 
         self.sub_concept_map = SUB_CONCEPT_MAP

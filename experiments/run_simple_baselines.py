@@ -44,6 +44,7 @@ def run_baselines(config):
     for dataset in datasets:
         cbm, cbm_test_results = train_cbm(
             n_concepts=dataset.n_concepts,
+            concept_names=dataset.concept_names,
             n_tasks=dataset.n_tasks,
             latent_representation_size=dataset.latent_representation_size,
             concept_loss_weight=config["cbm_concept_loss_weight"],

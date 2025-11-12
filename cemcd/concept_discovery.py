@@ -17,7 +17,7 @@ def calculate_embeddings(model, dl):
         axis=0)
 
     c_embs = np.concatenate(
-        list(map(lambda x: x["top_concept_embeddings"].detach().cpu().numpy(), results)),
+        list(map(lambda x: x["concept_embeddings"].detach().cpu().numpy(), results)),
         axis=0)
     c_embs = np.reshape(c_embs, (c_embs.shape[0], -1, model.embedding_size))
 
@@ -108,7 +108,7 @@ def split_concepts(config, initial_models, datasets, concepts_to_split):
     predictions = np.stack(predictions, axis=0)
 
     discovered_concept_labels = np.zeros((train_dataset_size, 0))
-    n_discovered_sub_concepts = [0] * datasets[0].n_concepts
+    n_discovered_sub_concepts = [0] * datasets.n_concepts
 
     for concept_idx in tqdm(concepts_to_split):
         sample_filter = np.logical_and.reduce(predictions[:, :, concept_idx] > 0.5, axis=0)

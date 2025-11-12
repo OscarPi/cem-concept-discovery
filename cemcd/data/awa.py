@@ -152,6 +152,7 @@ for sub_concept_name, super_concept_name in SUPER_CONCEPTS.items():
 
 class AwADatasets(Datasets):
     def __init__(self, dataset_dir="/datasets", model_dir="/checkpoints"):
+        dataset_dir = Path(dataset_dir)
         super().__init__(
             n_concepts=len(SELECTED_CONCEPT_SEMANTICS) - len(SUB_CONCEPT_NAMES) + len(SUPER_CONCEPT_NAMES),
             n_tasks=N_CLASSES,
@@ -159,7 +160,6 @@ class AwADatasets(Datasets):
             model_dir=model_dir
         )
 
-        dataset_dir = Path(dataset_dir)
         with (dataset_dir / "AwA2" / "train.pkl").open("rb") as f:
             self.train_data = pickle.load(f)
         with (dataset_dir / "AwA2" / "val.pkl").open("rb") as f:
@@ -208,6 +208,6 @@ class AwADatasets(Datasets):
         self.concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"])[SUB_CONCEPT_INDICES], self.test_data)))
         self.labelfree_concept_test_ground_truth = np.stack(list(map(lambda d: np.array(d["attribute_label"]), self.test_data)))
 
-        self.concept_names = SUB_CONCEPT_NAMES
+        self.concept_bank_concept_names = SUB_CONCEPT_NAMES
 
         self.sub_concept_map = SUB_CONCEPT_MAP

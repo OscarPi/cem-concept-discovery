@@ -6,6 +6,7 @@ class ConceptEmbeddingModel(base.BaseModel):
     def __init__(
             self,
             n_concepts,
+            concept_names,
             n_tasks,
             latent_representation_size,
             embedding_size,
@@ -14,6 +15,7 @@ class ConceptEmbeddingModel(base.BaseModel):
             concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
+        self.concept_names = concept_names
 
         self.embedding_size = embedding_size
         self.concept_loss_weight = concept_loss_weight
@@ -92,5 +94,5 @@ class ConceptEmbeddingModel(base.BaseModel):
         return {
             "predicted_concept_probs": predicted_concept_probs,
             "predicted_labels": predicted_labels,
-            "top_concept_embeddings": mixed_concept_embeddings
+            "concept_embeddings": mixed_concept_embeddings
         }
