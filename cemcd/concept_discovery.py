@@ -116,11 +116,14 @@ def split_concepts(config, initial_models, datasets, concepts_to_split):
             new_discovered_concept_labels = split_by_class(datasets, sample_filter)
         else:
             Zs = []
-            for e in embeddings:
-                if config["use_foundation_model_representations_instead_of_concept_embeddings"]:
-                    Zs.append(e[sample_filter])
-                else:
-                    Zs.append(e[:, concept_idx][sample_filter])
+            if config["use_one_hot_embeddings"]:
+                Zs.append(datasets[0].concept_bank[:, datasets[0].sub_concept_map[concept_idx]][sample_filter].astype(np.float32))
+            else:
+                for e in embeddings:
+                    if config["use_foundation_model_representations_instead_of_concept_embeddings"]:
+                        Zs.append(e[sample_filter])
+                    else:
+                        Zs.append(e[:, concept_idx][sample_filter])
 
             if config["sub_concept_extraction_method"] == "clustering":
                 new_discovered_concept_labels = split_by_clustering(
