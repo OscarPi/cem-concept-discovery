@@ -84,15 +84,15 @@ class ConceptEmbeddingModel(base.BaseModel):
         else:
             concept_probs_after_interventions = predicted_concept_probs
 
-        mixed_concept_embeddings = (
+        bottleneck = (
             concept_embeddings[:, :, :self.embedding_size] * torch.unsqueeze(concept_probs_after_interventions, dim=-1) +
             concept_embeddings[:, :, self.embedding_size:] * (1 - torch.unsqueeze(concept_probs_after_interventions, dim=-1))
         )
-        mixed_concept_embeddings = mixed_concept_embeddings.view((-1, self.embedding_size * self.n_concepts))
-        predicted_labels = self.label_predictor(mixed_concept_embeddings)
+        bottleneck = bottleneck.view((-1, self.embedding_size * self.n_concepts))
+        y_logits = self.label_predictor(bottleneck)
 
         return {
             "predicted_concept_probs": predicted_concept_probs,
-            "predicted_labels": predicted_labels,
-            "concept_embeddings": mixed_concept_embeddings
+            "y_logits": y_logits,
+            "bottleneck": bottleneck
         }

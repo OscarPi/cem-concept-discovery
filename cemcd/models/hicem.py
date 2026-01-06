@@ -191,14 +191,14 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
                     torch.nn.Linear(self.embedding_size, self.embedding_size * 2),
                     torch.nn.LeakyReLU()
                 ))
-            if len(flat_concept_list[i]["positive_sub_concepts"]) > 1:
+            if len(flat_concept_list[i]["positive_sub_concepts"]) > 0:
                 self.positive_embedding_compressors.append(torch.nn.Sequential(
                     torch.nn.Linear(len(flat_concept_list[i]["positive_sub_concepts"]) * self.embedding_size, self.embedding_size),
                     torch.nn.LeakyReLU()
                 ))
             else:
                 self.positive_embedding_compressors.append(None)
-            if len(flat_concept_list[i]["negative_sub_concepts"]) > 1:
+            if len(flat_concept_list[i]["negative_sub_concepts"]) > 0:
                 self.negative_embedding_compressors.append(torch.nn.Sequential(
                     torch.nn.Linear(len(flat_concept_list[i]["negative_sub_concepts"]) * self.embedding_size, self.embedding_size),
                     torch.nn.LeakyReLU()
@@ -243,14 +243,14 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
     def calculate_implied_interventions(self, interventions, c_true):
         for concept_idx in range(self.n_concepts):
             for parent_idx in self.positive_parents[concept_idx] + self.negative_parents[concept_idx]:
-                mask = torch.zeros_like(interventions)
+                mask = torch.zeros_like(interventions, dtype=torch.bool)
                 mask[:, parent_idx] = torch.logical_and(
                     torch.logical_and(interventions[:, concept_idx] == 1, interventions[:, parent_idx] == 0),
                     c_true[:, concept_idx] == 1
                 )
                 interventions = torch.where(
                     mask,
-                    interventions[:, concept_idx],
+                    interventions[:, concept_idx].unsqueeze(-1),
                     interventions
                 )
 
@@ -312,7 +312,9 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
 
             interventions = self.calculate_implied_interventions(interventions, c_true)
         
-        concept_probs_after_interventions = c_true * interventions + predicted_concept_probs * (1 - interventions)
+            concept_probs_after_interventions = c_true * interventions + predicted_concept_probs * (1 - interventions)
+        else:
+            concept_probs_after_interventions = predicted_concept_probs
 
         # Mix embeddings
         bottleneck = self.mix_embeddings(positive_and_negative_concept_embeddings, concept_probs_after_interventions)

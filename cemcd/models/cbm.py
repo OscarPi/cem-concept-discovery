@@ -62,9 +62,9 @@ class ConceptBottleneckModel(base.BaseModel):
         else:
             concept_probs_after_interventions = predicted_concept_probs
 
-        predicted_labels = self.label_predictor(concept_probs_after_interventions)
+        y_logits = self.label_predictor(concept_probs_after_interventions)
 
         return {
             "predicted_concept_probs": predicted_concept_probs,
-            "predicted_labels": predicted_labels
+            "y_logits": y_logits
         }

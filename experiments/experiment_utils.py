@@ -3,10 +3,10 @@ import yaml
 import torch
 import lightning
 from cemcd.data import awa, cub, mnist, shapes, kitchens, imagenet, get_latent_representation_size
-from cemcd.training import train_cem
+from cemcd.training import train_cem, load_cem
 
 def load_config(config_file):
-    with open(config_file, "r") as f:
+    with config_file.open("r") as f:
         return yaml.safe_load(f)
 
 def load_datasets(config):
@@ -42,10 +42,7 @@ def train_initial_cems(config, datasets, run_dir):
     models = []
     test_results = []
     for foundation_model in config["foundation_models"]:
-        if run_dir is None:
-            save_path = None
-        else:
-            save_path = Path(run_dir) / f"initial_{foundation_model}_cem.pth"
+        save_path = Path(run_dir) / f"initial_{foundation_model}_cem.pth"
         model, test_result = train_cem(
             n_concepts=datasets.n_concepts,
             concept_names=datasets.concept_names,
@@ -64,6 +61,26 @@ def train_initial_cems(config, datasets, run_dir):
         test_results.append(test_result)
     return models, test_results
 
+def load_initial_cems(run_dir, config, datasets):
+    models = []
+
+    for foundation_model in config["foundation_models"]:
+        path = Path(run_dir) / f"initial_{foundation_model}_cem.pth"
+        models.append(load_cem(
+            n_concepts=datasets.n_concepts,
+            concept_names=datasets.concept_names,
+            n_tasks=datasets.n_tasks,
+            latent_representation_size=get_latent_representation_size(foundation_model),
+            embedding_size=config["cem_embedding_size"],
+            concept_loss_weight=config["cem_concept_loss_weight"],
+            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model),
+            path=path,
+            use_task_class_weights=config["use_task_class_weights"],
+            use_concept_loss_weights=config["use_concept_loss_weights"]
+        ))
+
+    return models
+
 def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_time):
     trainer = lightning.Trainer()
 
@@ -71,11 +88,12 @@ def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_
     model.intervention_mask = torch.tensor([0] * model.n_concepts)
     [test_results] = trainer.test(model, test_dl)
     initial_task_accuracy = test_results["test_y_accuracy"]
+    intervention_accuracies.append(initial_task_accuracy)
     for c in concepts_to_intervene:
         if one_at_a_time:
             model.intervention_mask = torch.tensor([0] * model.n_concepts)
         model.intervention_mask[c] = 1
         [test_results] = trainer.test(model, test_dl)
-        accuracy_difference = round(test_results["test_y_accuracy"] - initial_task_accuracy, 4)
-        intervention_accuracies.append(accuracy_difference)
+        accuracy = round(test_results["test_y_accuracy"], 4)
+        intervention_accuracies.append(accuracy)
     return intervention_accuracies

@@ -3,7 +3,8 @@ import torch
 import lightning
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from cemcd.models.cem import ConceptEmbeddingModel
-from cemcd.models.hicem import HierarchicalConceptEmbeddingModel
+from cemcd.models.hicem import HierarchicalConceptEmbeddingModel, count_concepts
+from cemcd.models.inthicem import IntAwareHierarchicalConceptEmbeddingModel
 from cemcd.models.cbm import ConceptBottleneckModel
 
 def calculate_task_class_weights(n_tasks, train_dl):
@@ -102,6 +103,38 @@ def train_cem(
 
     return model, test_results
 
+def load_cem(
+        n_concepts,
+        concept_names,
+        n_tasks,
+        latent_representation_size,
+        embedding_size,
+        concept_loss_weight,
+        train_dl,
+        path,
+        use_task_class_weights=False,
+        use_concept_loss_weights=False):
+    task_class_weights = None
+    concept_loss_weights = None
+    if use_task_class_weights:
+        task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
+    if use_concept_loss_weights:
+        concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
+    model = ConceptEmbeddingModel(
+        n_concepts=n_concepts,
+        concept_names=concept_names,
+        n_tasks=n_tasks,
+        latent_representation_size=latent_representation_size,
+        embedding_size=embedding_size,
+        concept_loss_weight=concept_loss_weight,
+        task_class_weights=task_class_weights,
+        concept_loss_weights=concept_loss_weights
+    )
+
+    model.load_state_dict(torch.load(path))
+
+    return model
+
 def train_hicem(
         concepts,
         n_tasks,
@@ -117,7 +150,7 @@ def train_hicem(
         use_concept_loss_weights=False):
     task_class_weights = None
     concept_loss_weights = None
-    n_concepts = len(concepts)
+    n_concepts = count_concepts(concepts)
     if use_task_class_weights:
         task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
     if use_concept_loss_weights:
@@ -157,25 +190,26 @@ def train_hicem(
 
     return model, test_results
 
-def load_cem(
-        n_concepts,
+def load_hicem(
+        concepts,
         n_tasks,
         latent_representation_size,
         embedding_size,
         concept_loss_weight,
         train_dl,
-        test_dl,
         path,
         use_task_class_weights=False,
         use_concept_loss_weights=False):
     task_class_weights = None
     concept_loss_weights = None
+    n_concepts = count_concepts(concepts)
     if use_task_class_weights:
         task_class_weights = calculate_task_class_weights(n_tasks, train_dl)
     if use_concept_loss_weights:
         concept_loss_weights = calculate_concept_loss_weights(n_concepts, train_dl)
-    model = ConceptEmbeddingModel(
-        n_concepts=n_concepts,
+
+    model = HierarchicalConceptEmbeddingModel(
+        concepts=concepts,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
         embedding_size=embedding_size,
@@ -186,11 +220,7 @@ def load_cem(
 
     model.load_state_dict(torch.load(path))
 
-    trainer = lightning.Trainer()
-    model.freeze()
-    [test_results] = trainer.test(model, test_dl)
-
-    return model, test_results
+    return model
 
 def train_cbm(
         n_concepts,
@@ -248,11 +278,11 @@ def train_cbm(
 
 def load_cbm(
         n_concepts,
+        concept_names,
         n_tasks,
         latent_representation_size,
         concept_loss_weight,
         train_dl,
-        test_dl,
         path,
         use_task_class_weights=False,
         use_concept_loss_weights=False):
@@ -265,6 +295,7 @@ def load_cbm(
 
     model = ConceptBottleneckModel(
         n_concepts=n_concepts,
+        concept_names=concept_names,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
         concept_loss_weight=concept_loss_weight,
@@ -272,14 +303,9 @@ def load_cbm(
         concept_loss_weights=concept_loss_weights,
     )
 
-    trainer = lightning.Trainer()
-
     model.load_state_dict(torch.load(path))
 
-    model.freeze()
-    [test_results] = trainer.test(model, test_dl)
-
-    return model, test_results
+    return model
 
 def train_black_box(
         n_concepts,

@@ -3,7 +3,7 @@ import sklearn.model_selection
 import numpy as np
 import torch
 import torchvision
-from cemcd.data.base import Datasets
+from cemcd.data.base import Datasets, DataGetterWrapper
 
 x_train = []
 y_train = []
@@ -57,10 +57,17 @@ class MNISTDatasets(Datasets):
             self,
             n_digits,
             max_digit,
-            foundation_model=None,
             dataset_dir="/datasets",
-            model_dir="/checkpoints",
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+            model_dir="/checkpoints"):
+        representation_cache_dir = Path(dataset_dir) / "MNIST" / f"cache_{n_digits}-{max_digit}"
+        representation_cache_dir.mkdir(exist_ok=True)
+        super().__init__(
+            n_concepts=n_digits,
+            n_tasks=max_digit * n_digits + 1,
+            representation_cache_dir=representation_cache_dir,
+            model_dir=model_dir
+        )
+
         selected_digits = tuple(range(max_digit + 1))
         load_mnist(dataset_dir)
 
@@ -81,22 +88,14 @@ class MNISTDatasets(Datasets):
                     img,
                     np.sum(labels[idx]),
                     torch.tensor(labels[idx] > (max_digit / 2), dtype=torch.float32))
-            getter.length = len(samples)
             return getter
 
-        representation_cache_dir = Path(dataset_dir) / "MNIST" / f"cache_{n_digits}-{max_digit}"
-        representation_cache_dir.mkdir(exist_ok=True)
-        super().__init__(
-            train_getter=data_getter(self.train_samples, self.train_labels),
-            val_getter=data_getter(self.val_samples, self.val_labels),
-            test_getter=data_getter(self.test_samples, self.test_labels),
-            foundation_model=foundation_model,
-            train_img_transform=None,
-            val_test_img_transform=None,
-            representation_cache_dir=representation_cache_dir,
-            model_dir=model_dir,
-            device=device
-        )
+        self.data = {
+            "train": DataGetterWrapper(data_getter(self.train_samples, self.train_labels), len(self.train_samples)),
+            "val": DataGetterWrapper(data_getter(self.val_samples, self.val_labels), len(self.val_samples)),
+            "test": DataGetterWrapper(data_getter(self.test_samples, self.test_labels), len(self.test_samples)),
+        }
+
 
         train_concepts = []
         test_concepts = []
@@ -115,5 +114,6 @@ class MNISTDatasets(Datasets):
         self.concept_test_ground_truth = np.stack(test_concepts, axis=1)
         self.concept_bank_concept_names = concept_bank_concept_names
 
-        self.n_concepts = n_digits
-        self.n_tasks = max_digit * n_digits + 1
+        self.concept_names = []
+        for i in range(n_digits):
+            self.concept_names.append(f"Digit {i} is > {max_digit / 2}")

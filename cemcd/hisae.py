@@ -3,12 +3,12 @@ from torch import optim, nn
 import lightning
 
 class HierarchicalSparseAutoEncoder(lightning.LightningModule):
-    def __init__(self, input_dim):
+    def __init__(self, input_dim, dictionary_size, k, sub_dictionary_size, sub_dictionary_k):
         super().__init__()
-        self.dictionary_size = 6144 # 12288
-        self.k = 16
-        self.sub_dictionary_size = 512
-        self.sub_dictionary_k = 4
+        self.dictionary_size = dictionary_size
+        self.k = k
+        self.sub_dictionary_size = sub_dictionary_size
+        self.sub_dictionary_k = sub_dictionary_k
 
         self.top_level_encoder = nn.Sequential(
             nn.Linear(input_dim, self.dictionary_size),

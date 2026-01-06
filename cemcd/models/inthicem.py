@@ -115,13 +115,15 @@ class IntAwareHierarchicalConceptEmbeddingModel(hicem.HierarchicalConceptEmbeddi
         c,
         prev_interventions=None,
         train=False,
+        bottleneck=None,
     ):
         if prev_interventions is None:
             prev_interventions = torch.zeros_like(concept_probs)
 
-        # Shape is [B, n_concepts, emb_size]
-        concept_probs = prev_interventions * c + (1 - prev_interventions) * concept_probs
-        bottleneck = self.mix_embeddings(positive_and_negative_concept_embeddings, concept_probs)
+        if bottleneck is None:
+            # Shape is [B, n_concepts, emb_size]
+            concept_probs = prev_interventions * c + (1 - prev_interventions) * concept_probs
+            bottleneck = self.mix_embeddings(positive_and_negative_concept_embeddings, concept_probs)
 
         # Zero out embeddings of previously intervened concepts #TODO: what if train?
         available_concepts = (1 - prev_interventions).to(bottleneck.device)
@@ -188,7 +190,7 @@ class IntAwareHierarchicalConceptEmbeddingModel(hicem.HierarchicalConceptEmbeddi
                 1,
             )
             updated_int = self.calculate_implied_interventions(updated_int, c)
-            rollout_y_logits = self.rollout_y_logits( # TODO: old code was extra, don't need to apply new_int twice.
+            rollout_y_logits = self.rollout_y_logits(
                 interventions=updated_int,
                 predicted_concept_probs=predicted_concept_probs.detach(),
                 c_true=c,
@@ -381,7 +383,7 @@ class IntAwareHierarchicalConceptEmbeddingModel(hicem.HierarchicalConceptEmbeddi
 
         # And as many steps in the trajectory as suggested
         for i in range(current_horizon):
-            # And generate a probability distribution over previously TODO: are you sure this is over previously unseen concepts?
+            # And generate a probability distribution over previously TODO: is this over previously unseen concepts?
             # unseen concepts to indicate which one we should intervene
             # on next!
             concept_scores = self.prior_int_distribution(

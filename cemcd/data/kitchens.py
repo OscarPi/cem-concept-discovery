@@ -35,6 +35,12 @@ from cemcd.data.base import Datasets, DataGetterWrapper
 
 # TOP_LEVEL_CONCEPTS = [FRUIT_VEG] + [[item] for item in OTHER]
 
+SUB_SUB_CONCEPTS = {
+    "Apple": ["Apple 1", "Apple 2", "Apple 3", "Apple 4", "Apple 5"],
+    "Potato": ["Potato 1", "Potato 2", "Potato 3", "Potato 4", "Potato 5"],
+    "Pepper": ["Pepper 1", "Pepper 2", "Pepper 3"]
+}
+
 def hex_str_to_id(id_hex_string):
     packed = struct.Struct("=I").pack(int(id_hex_string, 16))
     return struct.Struct("=f").unpack(packed)[0]
@@ -107,35 +113,40 @@ class KitchensDatasets(Datasets):
 
         self.concept_names = top_level_concepts
 
-        self.sub_concept_names = []
-        self.sub_concept_map = []
+        all_sub_concept_and_sub_sub_concept_names = []
+        for concept in top_level_concepts:
+            if concept in self.dataset_info["ingredient_groups"]:
+                for sub_concept_name in self.dataset_info["ingredient_groups"][concept]:
+                    all_sub_concept_and_sub_sub_concept_names.append(sub_concept_name)
+                    if sub_concept_name in SUB_SUB_CONCEPTS:
+                        for sub_sub_concept_name in SUB_SUB_CONCEPTS[sub_concept_name]:
+                            all_sub_concept_and_sub_sub_concept_names.append(sub_sub_concept_name)
+        all_sub_concept_and_sub_sub_concept_train_labels = self.create_concept_bank(all_sub_concept_and_sub_sub_concept_names, "train")
+        all_sub_concept_and_sub_sub_concept_test_labels = self.create_concept_bank(all_sub_concept_and_sub_sub_concept_names, "test")
+
+        self.concept_bank = []
         for concept in top_level_concepts:
             sub_concepts = []
             if concept in self.dataset_info["ingredient_groups"]:
-                sub_concepts = self.dataset_info["ingredient_groups"][concept]
+                for sub_concept_name in self.dataset_info["ingredient_groups"][concept]:
+                    sub_sub_concepts = []
+                    if sub_concept_name in SUB_SUB_CONCEPTS:
+                        for sub_sub_concept_name in SUB_SUB_CONCEPTS[sub_concept_name]:
+                            i = all_sub_concept_and_sub_sub_concept_names.index(sub_sub_concept_name)
+                            sub_sub_concepts.append({
+                                "name": sub_sub_concept_name,
+                                "train_labels": all_sub_concept_and_sub_sub_concept_train_labels[:, i],
+                                "test_labels": all_sub_concept_and_sub_sub_concept_test_labels[:, i],
+                            })
+                    i = all_sub_concept_and_sub_sub_concept_names.index(sub_concept_name)
+                    sub_concepts.append({
+                        "name": sub_concept_name,
+                        "train_labels": all_sub_concept_and_sub_sub_concept_train_labels[:, i],
+                        "test_labels": all_sub_concept_and_sub_sub_concept_test_labels[:, i],
+                        "sub_sub_concepts": sub_sub_concepts
+                    })
 
-            self.sub_concept_names.extend(sub_concepts)
-            sub_concept_indices = []
-            for sub_concept in sub_concepts:
-                sub_concept_indices.append(self.sub_concept_names.index(sub_concept))
-            self.sub_concept_map.append(sub_concept_indices)
-
-        # self.sub_sub_concept_names = []
-        # self.sub_sub_concept_map = []
-        # for sub_concept in self.sub_concept_names:
-        #     sub_sub_concept_indices = []
-        #     if sub_concept in self.dataset_info["ingredient_groups"]:
-        #         sub_sub_concepts = self.dataset_info["ingredient_groups"][sub_concept]
-        #         self.sub_sub_concept_names.extend(sub_sub_concepts)
-        #         for sub_sub_concept in sub_sub_concepts:
-        #             sub_sub_concept_indices.append(self.sub_sub_concept_names.index(sub_sub_concept))
-
-        #     self.sub_sub_concept_map.append(sub_sub_concept_indices)
-
-        self.sub_concept_bank = self.create_concept_bank(self.sub_concept_names, "train")
-        self.sub_concept_test_ground_truth = self.create_concept_bank(self.sub_concept_names, "test")
-        # self.sub_sub_concept_bank = self.create_concept_bank(self.sub_sub_concept_names, "train")
-        # self.sub_sub_concept_test_ground_truth = self.create_concept_bank(self.sub_sub_concept_names, "test")
+            self.concept_bank.append(sub_concepts)
 
         # self.ingredients = sorted(dataset_info["object_counts"]["ingredient_counts"].keys())
         # labelfree_test_concepts = []
