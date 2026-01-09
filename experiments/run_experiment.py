@@ -66,7 +66,7 @@ if __name__ == "__main__":
     (run_dir / "config.yaml").write_text(Path(args.config).read_text())
     if config["use_wandb"]:
         wandb.init(
-            project="cem-concept-discovery-sae",
+            project="cem-concept-discovery-hisae-tests",
             config=config,
             name=run_name,
             notes=config["description"])
