@@ -153,7 +153,7 @@ def split_concepts(config, initial_models, datasets):
             elif config["sub_concept_extraction_method"] == "hisae":
                 number_active_concepts = config["hisae_config"]["k"] + config["hisae_config"]["k"] * config["hisae_config"]["sub_dictionary_k"]
                 new_active_concepts = np.full((train_dataset_size, number_active_concepts), -1)
-                new_active_concepts[sample_filter] = split_with_hisae(Zs)
+                new_active_concepts[sample_filter] = split_with_hisae(config["hisae_config"], Zs)
                 active_concepts.append(new_active_concepts)
 
         if config["sub_concept_extraction_method"] != "hisae":

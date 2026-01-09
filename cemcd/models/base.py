@@ -74,7 +74,7 @@ class BaseModel(lightning.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, result = self.run_step(batch, train=True)
-        self.log("loss", float(loss.detach()), prog_bar=True)
+        self.log("loss", loss.item(), prog_bar=True)
         self.log("c_accuracy", result["c_accuracy"], prog_bar=True)
         self.log("c_auc", result["c_auc"], prog_bar=True)
         self.log("y_accuracy", result["y_accuracy"], prog_bar=True)
@@ -84,12 +84,12 @@ class BaseModel(lightning.LightningModule):
             self.log(f"con_{i+1}_{self.concept_names[i]}_auc", auc)
         return {
             "loss": loss,
-            "log": {**result, "loss": float(loss)}
+            "log": {**result, "loss": loss.item()}
         }
 
     def validation_step(self, batch, batch_idx):
         loss, result = self.run_step(batch)
-        self.log("val_loss", float(loss), prog_bar=True)
+        self.log("val_loss", loss.item(), prog_bar=True)
         self.log("val_c_accuracy", result["c_accuracy"], prog_bar=True)
         self.log("val_c_auc", result["c_auc"], prog_bar=True)
         self.log("val_y_accuracy", result["y_accuracy"], prog_bar=True)
@@ -98,12 +98,12 @@ class BaseModel(lightning.LightningModule):
         for i, auc in enumerate(result["c_aucs"]):
             self.log(f"con_{i+1}_{self.concept_names[i]}_val_auc", auc)
         return {
-            "val_" + key: val for key, val in list(result.items()) + [("loss", float(loss))]
+            "val_" + key: val for key, val in list(result.items()) + [("loss", loss.item())]
         }
 
     def test_step(self, batch, batch_idx):
         loss, result = self.run_step(batch)
-        self.log("test_loss", float(loss), prog_bar=True)
+        self.log("test_loss", loss.item(), prog_bar=True)
         self.log("test_c_accuracy", result["c_accuracy"], prog_bar=True)
         self.log("test_c_auc", result["c_auc"], prog_bar=True)
         self.log("test_y_accuracy", result["y_accuracy"], prog_bar=True)

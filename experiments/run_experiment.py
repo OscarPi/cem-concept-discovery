@@ -4,7 +4,7 @@ from pathlib import Path
 import wandb
 import torch
 from experiment_utils import load_config, load_datasets
-from run import train_initial_models, discover_and_match_concepts, train_hicems, evaluate_interventions, run_baselines
+from run import train_initial_models, discover_concepts, match_concepts, train_hicems, evaluate_interventions, run_baselines
 
 ALPHABET = [
     "ALPHA",
@@ -74,11 +74,11 @@ if __name__ == "__main__":
     datasets = load_datasets(config)
 
     train_initial_models(run_dir, config, datasets)
-    discover_and_match_concepts(run_dir, config, datasets)
+    discover_concepts(run_dir, config, datasets)
+    match_concepts(run_dir, config, datasets)
     train_hicems(run_dir, config, datasets)
     evaluate_interventions(run_dir, config, datasets)
-    run_baselines(run_dir, config, datasets)
-
+    # run_baselines(run_dir, config, datasets) TODO
 
     if config["use_wandb"]:
         wandb.save(os.path.join(run_dir, "*"))

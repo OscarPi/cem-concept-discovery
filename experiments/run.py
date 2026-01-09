@@ -1,5 +1,5 @@
 import argparse
-import os
+from tqdm import tqdm, trange
 from pathlib import Path
 import wandb
 import yaml
@@ -62,7 +62,8 @@ def parse_arguments():
         "command",
         choices=[
             "train-initial-models",
-            "discover-and-match-concepts",
+            "discover-concepts",
+            "match-concepts",
             "train-hicems",
             "evaluate-interventions",
             "run-baselines"
@@ -161,21 +162,21 @@ def log_results(config, run_dir, results):
     if config["use_wandb"]:
         wandb.log(results)
 
-def match_discovered_concepts_to_concept_bank(discovered_concept_labels, n_discovered_sub_concepts, concept_bank):
+def match_discovered_concepts_to_concept_bank(discovered_concept_labels, n_discovered_sub_concepts, datasets):
     matched_discovered_concepts = []
     discovered_concept_train_ground_truth = []
     discovered_concept_test_ground_truth = []
     discovered_concept_semantics = []
     discovered_concept_roc_aucs = []
-    n_matched_sub_concepts = [0] * len(concept_bank)
+    n_matched_sub_concepts = [0] * datasets.n_concepts
 
-    for top_concept_idx, sub_concepts in enumerate(concept_bank):
+    for top_concept_idx, sub_concepts in enumerate(datasets.concept_bank):
         first_discovered_concept_to_check = sum(n_discovered_sub_concepts[:top_concept_idx])
         n_discovered_concepts_to_check = n_discovered_sub_concepts[top_concept_idx]
 
         for sub_concept in sub_concepts:
             true_sub_concept_labels = sub_concept["train_labels"]
-            best_roc_auc = 0
+            best_roc_auc = 0.0
             best_discovered_concept_idx = None
             for discovered_concept_idx in range(first_discovered_concept_to_check, first_discovered_concept_to_check + n_discovered_concepts_to_check):
                 labels = discovered_concept_labels[:, discovered_concept_idx]
@@ -198,42 +199,97 @@ def match_discovered_concepts_to_concept_bank(discovered_concept_labels, n_disco
             discovered_concept_roc_aucs,
             n_matched_sub_concepts)
 
-def match_hisae_discovered_concepts_to_concept_bank():
-    top_concept_name = kitchens_data.concept_names[top_concept_index]
-    print(f"Looking at discovered concepts for top-level concept {top_concept_name}.")
-    sub_concept_names = kitchens_data.dataset_info["ingredient_groups"][top_concept_name]
-    print(f"Sub-concepts in the concept bank are: {", ".join(sub_concept_names)}")
+def match_hisae_discovered_concepts_to_concept_bank(hisae_config, active_concepts, datasets):
+    discovered_concept_labels = []
+    discovered_concept_train_ground_truth = []
+    discovered_concept_test_ground_truth = []
+    hicem_concepts = []
+    n_matched_concepts = 0
 
-    for sub_concept_name in sub_concept_names:
-        sub_concept_ground_truth_labels = kitchens_data.create_concept_bank([sub_concept_name], "train").squeeze()
-        best_roc_auc = 0.0
-        best_latent_idx = -1
-        for latent_idx in range(6144):
-            latent_activations = np.any(active_concepts[:, top_concept_index] == latent_idx, axis=1)
-            roc_auc = roc_auc_score(sub_concept_ground_truth_labels, latent_activations)
-            if roc_auc > best_roc_auc:
-                best_roc_auc = roc_auc
-                best_latent_idx = latent_idx
-        print(f"The best match for the {sub_concept_name} sub-concept was {best_roc_auc}.")
+    for top_concept_idx, sub_concepts in tqdm(enumerate(datasets.concept_bank)):
+        matched_sub_concepts = []
+        for sub_concept in tqdm(sub_concepts, leave=False):
+            true_sub_concept_labels = sub_concept["train_labels"]
+            best_avg_roc_auc = 0.0
+            best_latent_idx = None
+            best_sub_latent_idxs = None
+            for latent_idx in trange(hisae_config["dictionary_size"], leave=False):
+                latent_activations = np.any(active_concepts[:, top_concept_idx] == latent_idx, axis=1)
+                if np.all(latent_activations == 0):
+                    continue
 
-        first_sub_latent_idx = 6144 + best_latent_idx * 512
-        end_of_sub_latents = first_sub_latent_idx + 512
+                sub_concept_roc_auc = sklearn.metrics.roc_auc_score(true_sub_concept_labels, latent_activations)
 
-        sample_filter = np.any(active_concepts[:, top_concept_index] == best_latent_idx, axis=1)
+                first_sub_latent_idx = hisae_config["dictionary_size"] + latent_idx * hisae_config["sub_dictionary_size"]
+                end_of_sub_latents = first_sub_latent_idx + hisae_config["sub_dictionary_size"]
 
-        for sub_sub_concept_name in sub_sub_concepts.get(sub_concept_name, []):
-            sub_sub_concept_ground_truth = kitchens_data.create_concept_bank([sub_sub_concept_name], "train").squeeze()
-            best_sub_roc_auc = 0.0
-            best_sub_latent_idx = -1
-            if not (np.all(sub_sub_concept_ground_truth == 0) or np.all(sub_sub_concept_ground_truth == 1)):
-                for latent_idx in range(first_sub_latent_idx, end_of_sub_latents):
-                    latent_activations = np.any(active_concepts[:, top_concept_index] == latent_idx, axis=1)
-                    roc_auc = roc_auc_score(sub_sub_concept_ground_truth[sample_filter], latent_activations[sample_filter])
-                    if roc_auc > best_sub_roc_auc:
-                        best_sub_roc_auc = roc_auc
-                        best_sub_latent_idx = latent_idx
-            print(f"    The best match for the {sub_sub_concept_name} sub-sub-concept was {best_sub_roc_auc}.")
-            print(f"        If we take sub-concept labels: {roc_auc_score(sub_sub_concept_ground_truth, np.any(active_concepts[:, top_concept_index] == best_latent_idx, axis=1))}.")
+                sub_sub_concept_roc_aucs = []
+                sub_latent_idxs = []
+                for sub_sub_concept in tqdm(sub_concept["sub_sub_concepts"], leave=False):
+                    true_sub_sub_concept_labels = sub_sub_concept["train_labels"]
+                    best_sub_roc_auc = 0.0
+                    best_sub_latent_idx = None
+                    for sub_latent_idx in range(first_sub_latent_idx, end_of_sub_latents):
+                        sub_latent_activations = np.any(active_concepts[:, top_concept_idx] == sub_latent_idx, axis=1)
+                        roc_auc = sklearn.metrics.roc_auc_score(true_sub_sub_concept_labels, sub_latent_activations)
+                        if roc_auc > best_sub_roc_auc:
+                            best_sub_roc_auc = roc_auc
+                            best_sub_latent_idx = sub_latent_idx
+                    sub_sub_concept_roc_aucs.append(best_sub_roc_auc)
+                    if best_sub_roc_auc > 0.7:
+                        sub_latent_idxs.append(best_sub_latent_idx)
+                    else:
+                        sub_latent_idxs.append(None)
+
+                avg_roc_auc = np.mean([sub_concept_roc_auc] + sub_sub_concept_roc_aucs)
+
+                if avg_roc_auc > best_avg_roc_auc:
+                    best_avg_roc_auc = avg_roc_auc
+                    best_latent_idx = latent_idx
+                    best_sub_latent_idxs = sub_latent_idxs
+
+            if best_avg_roc_auc > 0.7:
+                matched_sub_sub_concepts = []
+                for true_sub_sub_concept_idx, sub_sub_concept in enumerate(sub_concept["sub_sub_concepts"]):
+                    if best_sub_latent_idxs[true_sub_sub_concept_idx] is not None:
+                        sub_sub_concept_labels = np.any(active_concepts[:, top_concept_idx] == best_sub_latent_idxs[true_sub_sub_concept_idx], axis=1)
+                        matched_sub_sub_concepts.append({
+                            "name": sub_sub_concept["name"],
+                            "idx": datasets.n_concepts + n_matched_concepts,
+                            "roc_auc": sklearn.metrics.roc_auc_score(sub_sub_concept["train_labels"], sub_sub_concept_labels),
+                            "positive_sub_concepts": [],
+                            "negative_sub_concepts": []
+                        })
+                        discovered_concept_labels.append(sub_sub_concept_labels)
+                        discovered_concept_train_ground_truth.append(sub_sub_concept["train_labels"])
+                        discovered_concept_test_ground_truth.append(sub_sub_concept["test_labels"])
+                        n_matched_concepts += 1
+
+                sub_concept_labels = np.any(active_concepts[:, top_concept_idx] == best_latent_idx, axis=1)
+                matched_sub_concepts.append({
+                    "name": sub_concept["name"],
+                    "idx": datasets.n_concepts + n_matched_concepts,
+                    "roc_auc": sklearn.metrics.roc_auc_score(sub_concept["train_labels"], sub_concept_labels),
+                    "positive_sub_concepts": matched_sub_sub_concepts,
+                    "negative_sub_concepts": []
+                })
+                discovered_concept_labels.append(sub_concept_labels)
+                discovered_concept_train_ground_truth.append(sub_concept["train_labels"])
+                discovered_concept_test_ground_truth.append(sub_concept["test_labels"])
+                n_matched_concepts += 1
+
+        hicem_concepts.append({
+            "name": datasets.concept_names[top_concept_idx],
+            "idx": top_concept_idx,
+            "positive_sub_concepts": matched_sub_concepts,
+            "negative_sub_concepts": []
+        })
+
+    return (np.stack(discovered_concept_labels, axis=-1),
+        np.stack(discovered_concept_train_ground_truth, axis=-1),
+        np.stack(discovered_concept_test_ground_truth, axis=-1),
+        hicem_concepts,
+        n_matched_concepts)
 
 def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
     n_top_concepts = len(sub_concepts)
@@ -311,7 +367,7 @@ def train_initial_models(run_dir, config, datasets):
             model_results = get_accuracies(test_result, datasets.n_concepts, f"initial_{foundation_model}_cem")
             log(model_results)
 
-def discover_and_match_concepts(run_dir, config, datasets):
+def discover_concepts(run_dir, config, datasets):
     log = lambda results: log_results(config, run_dir, results)
 
     initial_models = load_initial_cems(run_dir, config, datasets)
@@ -330,12 +386,31 @@ def discover_and_match_concepts(run_dir, config, datasets):
         np.save(run_dir / "discovered_concept_labels", discovered_concept_labels)
         log({"n_discovered_sub_concepts": n_discovered_sub_concepts})
 
+
+def match_concepts(run_dir, config, datasets):
+    log = lambda results: log_results(config, run_dir, results)
+
     if not config["match_to_concept_bank_and_train_hicem"]:
         return
 
     if config["sub_concept_extraction_method"] == "hisae":
-        pass
+        active_concepts = np.load(run_dir / "active_concepts.npy")
+
+        (matched_discovered_concept_labels,
+         discovered_concept_train_ground_truth,
+         discovered_concept_test_ground_truth,
+         hicem_concepts,
+         n_matched_discovered_concepts) = match_hisae_discovered_concepts_to_concept_bank(
+            hisae_config=config["hisae_config"],
+            active_concepts=active_concepts,
+            datasets=datasets
+         )
     else:
+        discovered_concept_labels = np.load(run_dir / "discovered_concept_labels.npy")
+        with (run_dir / "results.yaml").open("r") as f:
+            results_yaml = yaml.safe_load(f)
+            n_discovered_sub_concepts = results_yaml["n_discovered_sub_concepts"]
+
         (matched_discovered_concepts,
          discovered_concept_train_ground_truth,
          discovered_concept_test_ground_truth,
@@ -534,8 +609,10 @@ if __name__ == "__main__":
 
     if args.command == "train-initial-models":
         train_initial_models(run_dir, config, datasets)
-    elif args.command == "discover-and-match-concepts":
-        discover_and_match_concepts(run_dir, config, datasets)
+    elif args.command == "discover-concepts":
+        discover_concepts(run_dir, config, datasets)
+    elif args.command == "match-concepts":
+        match_concepts(run_dir, config, datasets)
     elif args.command == "train-hicems":
         train_hicems(run_dir, config, datasets)
     elif args.command == "evaluate-interventions":
