@@ -177,6 +177,13 @@ class ImageNetDatasets(Datasets):
             "test": DataGetterWrapper(data_getter(splits["test"], "test"), len(splits["test"])),
         }
 
+        self.concept_names = []
+        for synset_id in CONCEPT_SYNSETS:
+            synset = imagenet_id_to_synset(synset_id)
+            concept_name = synset.name().split(".")[0].replace('_',' ')
+            self.concept_names.append(concept_name)
+
+
     def get_dataloader(self, split, foundation_model=None, transform=None, use_concepts=True, additional_concepts=None, include_provided_concepts=True):
         assert foundation_model == "clip_vitl14", "Only 'clip_vitl14' is supported for ImageNet."
 

@@ -602,7 +602,6 @@ if __name__ == "__main__":
     config = load_config(args.config)
     run_dir = args.run_dir
 
-    assert not config["use_wandb"], "WandB logging is not supported in run.py."
     assert len(config["foundation_models"]) == 1 or config["sub_concept_extraction_method"] == "clustering", "Only one foundation model can be used unless clustering is used for sub-concept extraction."
 
     datasets = load_datasets(config)
