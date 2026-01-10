@@ -40,11 +40,11 @@ class Datasets:
             n_concepts,
             n_tasks,
             representation_cache_dir=None,
-            model_dir="/checkpoints"):
+            model_dir=None):
         self.n_concepts = n_concepts
         self.n_tasks = n_tasks
-        self._representation_cache_dir = Path(representation_cache_dir)
-        self._model_dir = Path(model_dir)
+        self._representation_cache_dir = Path(representation_cache_dir) if representation_cache_dir is not None else None
+        self._model_dir = Path(model_dir) if model_dir is not None else None
         self._representation_cache = {}
         self._label_and_concept_cache = {}
 
