@@ -10,6 +10,7 @@ import sklearn.metrics
 from cemcd.training import train_cem, train_hicem, load_hicem
 from cemcd.data import get_latent_representation_size
 import cemcd.concept_discovery
+from cemcd.models.hicem import get_concept_names, count_concepts
 from experiment_utils import load_config, load_datasets, train_initial_cems, load_initial_cems, get_intervention_accuracies
 
 def get_accuracies(test_results, n_provided_concepts, model_name):
@@ -285,15 +286,39 @@ def match_hisae_discovered_concepts_to_concept_bank(hisae_config, active_concept
             "negative_sub_concepts": []
         })
 
+    for top_concept_idx in range(len(datasets.concept_bank), datasets.n_concepts):
+        hicem_concepts.append({
+            "name": datasets.concept_names[top_concept_idx],
+            "idx": top_concept_idx,
+            "positive_sub_concepts": [],
+            "negative_sub_concepts": []
+        })
+
     return (np.stack(discovered_concept_labels, axis=-1),
         np.stack(discovered_concept_train_ground_truth, axis=-1),
         np.stack(discovered_concept_test_ground_truth, axis=-1),
         hicem_concepts,
         n_matched_concepts)
 
-def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
-    n_top_concepts = len(sub_concepts)
-    n_discovered_sub_concepts = sum(map(sum, sub_concepts))
+def match_single_concept_to_concept_bank(labels, sub_concepts):
+    not_nan = np.logical_not(np.isnan(labels))
+    best_roc_auc = 0
+    best_roc_auc_idx = None
+    for i, sub_concept in enumerate(sub_concepts):
+        if np.all(sub_concept["train_labels"][not_nan] == 0) or np.all(sub_concept["train_labels"][not_nan] == 1):
+            continue
+        auc = sklearn.metrics.roc_auc_score(
+            sub_concept["train_labels"][not_nan],
+            labels[not_nan])
+        if auc > best_roc_auc:
+            best_roc_auc = auc
+            best_roc_auc_idx = i
+
+    return best_roc_auc_idx
+
+def run_unlabelled_concepts_baseline(run_dir, config, datasets, hicem_concepts):
+    n_top_concepts = datasets.n_concepts
+    n_discovered_sub_concepts = count_concepts(hicem_concepts) - n_top_concepts
     trainer = lightning.Trainer()
 
     train_dataset_size = len(datasets.data["train"])
@@ -315,7 +340,7 @@ def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
             foundation_model=foundation_model,
             additional_concepts=np.full((test_dataset_size, n_discovered_sub_concepts), np.nan))
         model, _ = train_hicem(
-            sub_concepts=sub_concepts,
+            concepts=hicem_concepts,
             n_tasks=datasets.n_tasks,
             latent_representation_size=get_latent_representation_size(foundation_model),
             embedding_size=config["hicem_embedding_size"],
@@ -330,27 +355,25 @@ def run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts):
 
         c_pred, _, _ = cemcd.concept_discovery.calculate_embeddings(model, train_dl)
 
-        discovered_concept_test_ground_truth = np.zeros((test_dataset_size, 0))
+        discovered_concept_test_ground_truth = np.full((test_dataset_size, n_discovered_sub_concepts), np.nan)
 
-        sub_concept_idx = n_top_concepts
-        for top_concept_idx in range(n_top_concepts):
-            for _ in range(sum(sub_concepts[top_concept_idx])):
-                if config["only_match_subconcepts"]:
-                    _, matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept_idx], datasets, datasets.sub_concept_map[top_concept_idx])
-                else:
-                    _, matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept_idx], datasets)
-                discovered_concept_test_ground_truth = np.concatenate(
-                    (discovered_concept_test_ground_truth, np.expand_dims(datasets.concept_test_ground_truth[:, matching_concept_idx], axis=1)),
-                    axis=1)
-                sub_concept_idx += 1
+        for top_concept_idx, top_concept in enumerate(hicem_concepts):
+            for sub_concept in top_concept["positive_sub_concepts"]:
+                matching_concept_idx = match_single_concept_to_concept_bank(c_pred[:, sub_concept["idx"]], datasets.concept_bank[top_concept_idx])
+                discovered_concept_test_ground_truth[:, sub_concept["idx"] - n_top_concepts] = datasets.concept_bank[top_concept_idx][matching_concept_idx]["test_labels"]
 
-        [test_results] = trainer.test(model, dataset.test_dl(discovered_concept_test_ground_truth))
-        model_results = get_accuracies(test_results, n_top_concepts, f"unlabelled_{dataset.foundation_model}_hicem")
+        test_dl = datasets.get_dataloader(
+            split="test",
+            foundation_model=foundation_model,
+            additional_concepts=discovered_concept_test_ground_truth)
+        [test_results] = trainer.test(model, test_dl)
+        model_results = get_accuracies(test_results, n_top_concepts, f"unlabelled_{foundation_model}_hicem")
         unlabelled_results.update(model_results)
 
         unlabelled_results.update(get_provided_and_discovered_intervention_accuracies(
             models=[model],
-            datasets=[dataset],
+            foundation_models=[foundation_model],
+            datasets=datasets,
             discovered_concept_test_ground_truth=discovered_concept_test_ground_truth,
             model_name_prefix="unlabelled"
         ))
@@ -419,7 +442,7 @@ def match_concepts(run_dir, config, datasets):
          n_matched_sub_concepts) = match_discovered_concepts_to_concept_bank(
             discovered_concept_labels=discovered_concept_labels,
             n_discovered_sub_concepts=n_discovered_sub_concepts,
-            concept_bank=datasets.concept_bank)
+            datasets=datasets)
         
         matched_discovered_concept_labels = discovered_concept_labels[:, matched_discovered_concepts]
 
@@ -444,7 +467,6 @@ def match_concepts(run_dir, config, datasets):
             })
 
             n_matched_discovered_concepts = sum(n_matched_sub_concepts)
-
 
     log({"n_matched_discovered_concepts": n_matched_discovered_concepts,
          "hicem_concepts": hicem_concepts})
@@ -534,30 +556,46 @@ def evaluate_interventions(run_dir, config, datasets):
     log(intervention_results)
 
 def run_baselines(run_dir, config, datasets):
-    # TODO: implementation needs to be updated
+    if not config["match_to_concept_bank_and_train_hicem"]:
+        return
+
     log = lambda results: log_results(config, run_dir, results)
 
-    if not config["evaluate_cems_with_discovered_concepts"]:
+    val_dataset_size = len(datasets.data["val"])
+
+    with (run_dir / "results.yaml").open("r") as f:
+        results_yaml = yaml.safe_load(f)
+        hicem_concepts = results_yaml["hicem_concepts"]
+        n_matched_discovered_concepts = results_yaml["n_matched_discovered_concepts"]
+
+    loaded_arrays = np.load(run_dir / "matched_discovered_concepts.npz")
+    matched_discovered_concept_labels = loaded_arrays["matched_discovered_concept_labels"]
+    discovered_concept_train_ground_truth = loaded_arrays["discovered_concept_train_ground_truth"]
+    discovered_concept_test_ground_truth = loaded_arrays["discovered_concept_test_ground_truth"]
+
+    if config["evaluate_cems_with_discovered_concepts"]:
         cems_with_discovered_concepts = []
-        for dataset in datasets:
+        for foundation_model in config["foundation_models"]:
             model, test_results = train_cem(
-                n_concepts=dataset.n_concepts + n_matched_discovered_concepts,
-                n_tasks=dataset.n_tasks,
-                latent_representation_size=dataset.latent_representation_size,
+                n_concepts=datasets.n_concepts + n_matched_discovered_concepts,
+                concept_names=get_concept_names(hicem_concepts),
+                n_tasks=datasets.n_tasks,
+                latent_representation_size=get_latent_representation_size(foundation_model),
                 embedding_size=config["cem_embedding_size"],
                 concept_loss_weight=config["cem_concept_loss_weight"],
-                train_dl=dataset.train_dl(matched_discovered_concept_labels),
-                val_dl=dataset.val_dl(np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
-                test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-                save_path=run_dir / f"enhanced_{dataset.foundation_model}_cem.pth",
+                train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
+                val_dl=datasets.get_dataloader("val", foundation_model=foundation_model, additional_concepts=np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
+                test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
+                save_path=run_dir / f"enhanced_{foundation_model}_cem.pth",
                 max_epochs=config["max_epochs"],
                 use_task_class_weights=config["use_task_class_weights"],
                 use_concept_loss_weights=config["use_concept_loss_weights"])
-            log(get_accuracies(test_results, dataset.n_concepts, f"enhanced_{dataset.foundation_model}_cem"))
+            log(get_accuracies(test_results, datasets.n_concepts, f"enhanced_{foundation_model}_cem"))
             cems_with_discovered_concepts.append(model)
 
         log(get_provided_and_discovered_intervention_accuracies(
             models=cems_with_discovered_concepts,
+            foundation_models=config["foundation_models"],
             datasets=datasets,
             discovered_concept_test_ground_truth=discovered_concept_test_ground_truth,
             model_name_prefix="enhanced",
@@ -566,21 +604,21 @@ def run_baselines(run_dir, config, datasets):
 
     if config["evaluate_models_with_perfect_discovered_concepts"]:
         models_with_perfect_discovered_concepts = []
-        for dataset in datasets:
+        for foundation_model in config["foundation_models"]:
             model, test_results = train_hicem(
                 concepts=hicem_concepts,
-                n_tasks=dataset.n_tasks,
-                latent_representation_size=dataset.latent_representation_size,
+                n_tasks=datasets.n_tasks,
+                latent_representation_size=get_latent_representation_size(foundation_model),
                 embedding_size=config["hicem_embedding_size"],
                 concept_loss_weight=config["hicem_concept_loss_weight"],
-                train_dl=dataset.train_dl(discovered_concept_train_ground_truth),
-                val_dl=dataset.val_dl(np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
-                test_dl=dataset.test_dl(discovered_concept_test_ground_truth),
-                save_path=run_dir / f"ground_truth_baseline_{dataset.foundation_model}_cem.pth",
+                train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=discovered_concept_train_ground_truth),
+                val_dl=datasets.get_dataloader("val", foundation_model=foundation_model, additional_concepts=np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
+                test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
+                save_path=run_dir / f"ground_truth_baseline_{foundation_model}_cem.pth",
                 max_epochs=config["max_epochs"],
                 use_task_class_weights=config["use_task_class_weights"],
                 use_concept_loss_weights=config["use_concept_loss_weights"])
-            model_results = get_accuracies(test_results, 0, f"ground_truth_baseline_{dataset.foundation_model}_cem")
+            model_results = get_accuracies(test_results, datasets.n_concepts, f"ground_truth_baseline_{foundation_model}_cem")
             log(model_results)
             models_with_perfect_discovered_concepts.append(model)
 
@@ -593,7 +631,7 @@ def run_baselines(run_dir, config, datasets):
         log(int_baseline_results)
 
     if config["evaluate_unlabelled_concepts_baseline"]:
-        log(run_unlabelled_concepts_baseline(run_dir, config, datasets, sub_concepts))
+        log(run_unlabelled_concepts_baseline(run_dir, config, datasets, hicem_concepts))
 
 if __name__ == "__main__":
     torch.set_float32_matmul_precision("high")

@@ -137,11 +137,10 @@ class ShapesDatasets(Datasets):
             model_dir=model_dir,
             device=device)
         
-        self.concept_bank = make_concept_bank(dataset["train"])
+        sub_concept_train_ground_truth = make_concept_bank(dataset["train"])
+        sub_concept_test_ground_truth = make_concept_bank(dataset["test"])
 
-        self.concept_test_ground_truth = make_concept_bank(dataset["test"])
-
-        self.sub_concept_map = [
+        SUB_CONCEPT_MAP = [
             [0, 2, 3],
             [4, 5],
             [6, 7],
@@ -149,7 +148,25 @@ class ShapesDatasets(Datasets):
             [10, 11]
         ]
     
-        self.concept_bank_concept_names = CONCEPT_NAMES
+        self.concept_bank = []
+        for sub_concept_indices in SUB_CONCEPT_MAP:
+            sub_concepts = []
+            for idx in sub_concept_indices:
+                sub_concepts.append({
+                    "name": CONCEPT_NAMES[idx],
+                    "train_labels": sub_concept_train_ground_truth[:, idx],
+                    "test_labels": sub_concept_test_ground_truth[:, idx],
+                    "sub_sub_concepts": []
+                })
+            self.concept_bank.append(sub_concepts)
+
+        self.concept_names = [
+            "Shape is square/triangle/hexagon",
+            "Shape color is red/green",
+            "Shape color is blue/purple",
+            "Background color is red/green",
+            "Background color is blue/purple",
+        ]
 
         self.n_concepts = 5
         self.n_tasks = 48

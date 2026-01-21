@@ -66,7 +66,7 @@ if __name__ == "__main__":
     (run_dir / "config.yaml").write_text(Path(args.config).read_text())
     if config["use_wandb"]:
         wandb.init(
-            project="cem-concept-discovery-hisae-tests",
+            project="cem-concept-discovery-icml-2026",
             config=config,
             name=run_name,
             notes=config["description"])
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     match_concepts(run_dir, config, datasets)
     train_hicems(run_dir, config, datasets)
     evaluate_interventions(run_dir, config, datasets)
-    # run_baselines(run_dir, config, datasets) TODO
+    run_baselines(run_dir, config, datasets)
 
     if config["use_wandb"]:
         wandb.save(os.path.join(run_dir, "*"))

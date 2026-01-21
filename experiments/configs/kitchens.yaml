@@ -1,4 +1,4 @@
-description: Kitchens concept splitting run (hisae test)
+description: Kitchens concept splitting run (ICML)
 dataset: kitchens
 dataset_dir: /datasets
 model_dir: /checkpoints
@@ -28,8 +28,8 @@ sae_config:
   top_k_aux: 512
   aux_penalty: 0.03125
 hisae_config:
-  batch_size: 50000
-  max_epochs: 300
+  batch_size: 1000
+  max_epochs: 100
   dictionary_size: 4096
   k: 32
   sub_dictionary_size: 512
@@ -47,5 +47,5 @@ hicem_concept_loss_weight: 10
 cbm_concept_loss_weight: 10
 evaluate_interventions: True
 evaluate_cems_with_discovered_concepts: True
-evaluate_models_with_perfect_discovered_concepts: True
-evaluate_unlabelled_concepts_baseline: False
+evaluate_models_with_perfect_discovered_concepts: False
+evaluate_unlabelled_concepts_baseline: True

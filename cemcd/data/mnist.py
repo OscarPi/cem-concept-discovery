@@ -97,22 +97,18 @@ class MNISTDatasets(Datasets):
         }
 
 
-        train_concepts = []
-        test_concepts = []
-        concept_bank_concept_names = []
-        self.sub_concept_map = []
+        self.concept_bank = []
         for i in range(n_digits):
             sub_concepts = []
             for j in selected_digits:
-                sub_concepts.append(len(concept_bank_concept_names))
-                train_concepts.append(self.train_labels[:, i] == j)
-                test_concepts.append(self.test_labels[:, i] == j)
-                concept_bank_concept_names.append(f"Digit {i} is {j}")
-            self.sub_concept_map.append(sub_concepts)
+                sub_concepts.append({
+                    "name": f"Digit {i} is {j}",
+                    "train_labels": self.train_labels[:, i] == j,
+                    "test_labels": self.test_labels[:, i] == j,
+                    "sub_sub_concepts": []
+                })
 
-        self.concept_bank = np.stack(train_concepts, axis=1, dtype=bool)
-        self.concept_test_ground_truth = np.stack(test_concepts, axis=1)
-        self.concept_bank_concept_names = concept_bank_concept_names
+            self.concept_bank.append(sub_concepts)
 
         self.concept_names = []
         for i in range(n_digits):

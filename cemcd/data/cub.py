@@ -771,10 +771,20 @@ class CUBDatasets(Datasets):
             "test": DataGetterWrapper(data_getter(self.test_data), len(self.test_data)),
         }
 
-        self.concept_bank = np.array(list(map(lambda d: concept_matrix[d["class_label"]], self.train_data)), dtype=bool)
-        self.concept_test_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], self.test_data)))
-        self.concept_bank_concept_names = CONCEPT_SEMANTICS
+        sub_concept_train_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], self.train_data)), dtype=bool)
+        sub_concept_test_ground_truth = np.array(list(map(lambda d: concept_matrix[d["class_label"]], self.test_data)))
         
+        self.concept_bank = []
+        for sub_concept_indices in SUB_CONCEPT_MAP:
+            sub_concepts = []
+            for idx in sub_concept_indices:
+                sub_concepts.append({
+                    "name": CONCEPT_SEMANTICS[idx],
+                    "train_labels": sub_concept_train_ground_truth[:, idx],
+                    "test_labels": sub_concept_test_ground_truth[:, idx],
+                    "sub_sub_concepts": []
+                })
+            self.concept_bank.append(sub_concepts)
+
         self.concept_names = COMPRESSED_CONCEPT_SEMANTICS
 
-        self.sub_concept_map = SUB_CONCEPT_MAP
