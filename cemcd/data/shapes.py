@@ -3,7 +3,7 @@ import pickle
 from PIL import Image, ImageDraw
 import numpy as np
 import torch
-from cemcd.data.base import Datasets
+from cemcd.data.base import Datasets, DataGetterWrapper
 
 SHAPES = ["square", "circle", "triangle", "hexagon"]
 COLOURS = ["red", "green", "blue", "purple"]
@@ -111,10 +111,15 @@ def make_concept_bank(examples):
 class ShapesDatasets(Datasets):
     def __init__(
             self,
-            foundation_model=None,
             dataset_dir="/datasets",
-            model_dir="/checkpoints",
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+            model_dir="/checkpoints"):
+        super().__init__(
+            n_concepts=5,
+            n_tasks=48,
+            representation_cache_dir=Path(dataset_dir) / "shapes",
+            model_dir=model_dir
+        )
+
         with (Path(dataset_dir) / "shapes" / "shapes_dataset.pkl").open("rb") as f:
             dataset = pickle.load(f)
 
@@ -123,20 +128,14 @@ class ShapesDatasets(Datasets):
                 ex = examples[idx]
                 return render_image(ex), calculate_label(ex), calculate_concepts(ex)
 
-            getter.length = len(examples)
             return getter
 
-        super().__init__(
-            train_getter=data_getter(dataset["train"]),
-            val_getter=data_getter(dataset["val"]),
-            test_getter=data_getter(dataset["test"]),
-            foundation_model=foundation_model,
-            train_img_transform=None,
-            val_test_img_transform=None,
-            representation_cache_dir=Path(dataset_dir) / "shapes",
-            model_dir=model_dir,
-            device=device)
-        
+        self.data = {
+            "train": DataGetterWrapper(data_getter(dataset["train"]), len(dataset["train"])),
+            "val": DataGetterWrapper(data_getter(dataset["val"]), len(dataset["val"])),
+            "test": DataGetterWrapper(data_getter(dataset["test"]), len(dataset["test"])),
+        }
+
         sub_concept_train_ground_truth = make_concept_bank(dataset["train"])
         sub_concept_test_ground_truth = make_concept_bank(dataset["test"])
 
@@ -147,7 +146,7 @@ class ShapesDatasets(Datasets):
             [8, 9],
             [10, 11]
         ]
-    
+
         self.concept_bank = []
         for sub_concept_indices in SUB_CONCEPT_MAP:
             sub_concepts = []
@@ -167,6 +166,3 @@ class ShapesDatasets(Datasets):
             "Background color is red/green",
             "Background color is blue/purple",
         ]
-
-        self.n_concepts = 5
-        self.n_tasks = 48
