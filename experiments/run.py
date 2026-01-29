@@ -7,10 +7,10 @@ import numpy as np
 import torch
 import lightning
 import sklearn.metrics
-from cemcd.training import train_cem, train_hicem, load_hicem
+from cemcd.training import train_cem, train_hicem, load_hicem, train_deep_hicem, load_deep_hicem
 from cemcd.data import get_latent_representation_size
 import cemcd.concept_discovery
-from cemcd.models.hicem import get_concept_names, count_concepts
+from cemcd.models.deep_hicem import get_concept_names, count_concepts
 from experiment_utils import load_config, load_datasets, train_initial_cems, load_initial_cems, get_intervention_accuracies
 
 def get_accuracies(test_results, n_provided_concepts, model_name):
@@ -399,7 +399,7 @@ def discover_concepts(run_dir, config, datasets):
         config=config,
         initial_models=initial_models,
         datasets=datasets)
-    
+
     if config["sub_concept_extraction_method"] == "hisae":
         active_concepts = results["active_concepts"]
         np.save(run_dir / "active_concepts", active_concepts)
@@ -408,7 +408,6 @@ def discover_concepts(run_dir, config, datasets):
         n_discovered_sub_concepts = results["n_discovered_sub_concepts"]
         np.save(run_dir / "discovered_concept_labels", discovered_concept_labels)
         log({"n_discovered_sub_concepts": n_discovered_sub_concepts})
-
 
 def match_concepts(run_dir, config, datasets):
     log = lambda results: log_results(config, run_dir, results)
@@ -446,30 +445,39 @@ def match_concepts(run_dir, config, datasets):
         
         matched_discovered_concept_labels = discovered_concept_labels[:, matched_discovered_concepts]
 
-        hicem_concepts = []
-        next_discovered_concept_idx = datasets.n_concepts
-        for top_concept_idx, n_matched in enumerate(n_matched_sub_concepts):
-            positive_sub_concepts = []
-            for _ in range(n_matched):
-                positive_sub_concepts.append({
-                    "name": f"{discovered_concept_semantics[next_discovered_concept_idx - datasets.n_concepts]}",
-                    "idx": next_discovered_concept_idx,
-                    "roc_auc": float(discovered_concept_roc_aucs[next_discovered_concept_idx - datasets.n_concepts]),
-                    "positive_sub_concepts": [],
+        if config["deep_hicem"]:
+            hicem_concepts = []
+            next_discovered_concept_idx = datasets.n_concepts
+            for top_concept_idx, n_matched in enumerate(n_matched_sub_concepts):
+                positive_sub_concepts = []
+                for _ in range(n_matched):
+                    positive_sub_concepts.append({
+                        "name": f"{discovered_concept_semantics[next_discovered_concept_idx - datasets.n_concepts]}",
+                        "idx": next_discovered_concept_idx,
+                        "roc_auc": float(discovered_concept_roc_aucs[next_discovered_concept_idx - datasets.n_concepts]),
+                        "positive_sub_concepts": [],
+                        "negative_sub_concepts": []
+                    })
+                    next_discovered_concept_idx += 1
+                hicem_concepts.append({
+                    "name": datasets.concept_names[top_concept_idx],
+                    "idx": top_concept_idx,
+                    "positive_sub_concepts": positive_sub_concepts,
                     "negative_sub_concepts": []
                 })
-                next_discovered_concept_idx += 1
-            hicem_concepts.append({
-                "name": datasets.concept_names[top_concept_idx],
-                "idx": top_concept_idx,
-                "positive_sub_concepts": positive_sub_concepts,
-                "negative_sub_concepts": []
-            })
 
-            n_matched_discovered_concepts = sum(n_matched_sub_concepts)
+        n_matched_discovered_concepts = sum(n_matched_sub_concepts)
 
-    log({"n_matched_discovered_concepts": n_matched_discovered_concepts,
-         "hicem_concepts": hicem_concepts})
+    log({"n_matched_discovered_concepts": n_matched_discovered_concepts})
+
+    if config["deep_hicem"]:
+        log({"hicem_concepts": hicem_concepts})
+    else:
+        log({
+            "discovered_concept_semantics": discovered_concept_semantics,
+            "discovered_concept_roc_aucs": discovered_concept_roc_aucs,
+            "n_matched_sub_concepts": n_matched_sub_concepts,
+        })
 
     np.savez(run_dir / "matched_discovered_concepts.npz",
         matched_discovered_concept_labels=matched_discovered_concept_labels,
@@ -479,58 +487,100 @@ def match_concepts(run_dir, config, datasets):
 def train_hicems(run_dir, config, datasets):
     if not config["match_to_concept_bank_and_train_hicem"]:
         return
-    
+
     log = lambda results: log_results(config, run_dir, results)
 
     val_dataset_size = len(datasets.data["val"])
 
     with (run_dir / "results.yaml").open("r") as f:
         results_yaml = yaml.safe_load(f)
-        hicem_concepts = results_yaml["hicem_concepts"]
         n_matched_discovered_concepts = results_yaml["n_matched_discovered_concepts"]
+
+        if config["deep_hicem"]:
+            hicem_concepts = results_yaml["hicem_concepts"]
+        else:
+            n_matched_sub_concepts = results_yaml["n_matched_sub_concepts"]
+            sub_concepts = list(map(lambda n: (n, 0), n_matched_sub_concepts)) # We don't split negative embeddings
+            discovered_concept_semantics = results_yaml["discovered_concept_semantics"]
+
 
     loaded_arrays = np.load(run_dir / "matched_discovered_concepts.npz")
     matched_discovered_concept_labels = loaded_arrays["matched_discovered_concept_labels"]
     discovered_concept_test_ground_truth = loaded_arrays["discovered_concept_test_ground_truth"]
 
     for foundation_model in config["foundation_models"]:
-        _, test_results = train_hicem(
-            concepts=hicem_concepts,
-            n_tasks=datasets.n_tasks,
-            latent_representation_size=get_latent_representation_size(foundation_model),
-            embedding_size=config["hicem_embedding_size"],
-            concept_loss_weight=config["hicem_concept_loss_weight"],
-            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
-            val_dl=datasets.get_dataloader("val", foundation_model=foundation_model, additional_concepts=np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
-            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
-            save_path=run_dir / f"enhanced_{foundation_model}_hicem.pth",
-            max_epochs=config["max_epochs"],
-            use_task_class_weights=config["use_task_class_weights"],
-            use_concept_loss_weights=config["use_concept_loss_weights"])
-        log(get_accuracies(test_results, datasets.n_concepts, f"enhanced_{foundation_model}_hicem"))
+        if config["deep_hicem"]:
+            _, test_results = train_deep_hicem(
+                concepts=hicem_concepts,
+                n_tasks=datasets.n_tasks,
+                latent_representation_size=get_latent_representation_size(foundation_model),
+                embedding_size=config["hicem_embedding_size"],
+                concept_loss_weight=config["hicem_concept_loss_weight"],
+                train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
+                val_dl=datasets.get_dataloader("val", foundation_model=foundation_model, additional_concepts=np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
+                test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
+                save_path=run_dir / f"enhanced_{foundation_model}_deep_hicem.pth",
+                max_epochs=config["max_epochs"],
+                use_task_class_weights=config["use_task_class_weights"],
+                use_concept_loss_weights=config["use_concept_loss_weights"])
+            log(get_accuracies(test_results, datasets.n_concepts, f"enhanced_{foundation_model}_deep_hicem"))
+        else:
+            _, test_results = train_hicem(
+                sub_concepts=sub_concepts,
+                concept_names=datasets.concept_names + discovered_concept_semantics,
+                n_tasks=datasets.n_tasks,
+                latent_representation_size=get_latent_representation_size(foundation_model),
+                embedding_size=config["hicem_embedding_size"],
+                concept_loss_weight=config["hicem_concept_loss_weight"],
+                train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
+                val_dl=datasets.get_dataloader("val", foundation_model=foundation_model, additional_concepts=np.full((val_dataset_size, n_matched_discovered_concepts), np.nan)),
+                test_dl=datasets.get_dataloader("test", foundation_model=foundation_model, additional_concepts=discovered_concept_test_ground_truth),
+                save_path=run_dir / f"enhanced_{foundation_model}_hicem.pth",
+                max_epochs=config["max_epochs"],
+                use_task_class_weights=config["use_task_class_weights"],
+                use_concept_loss_weights=config["use_concept_loss_weights"])
+            log(get_accuracies(test_results, datasets.n_concepts, f"enhanced_{foundation_model}_hicem"))
 
 def load_hicems(run_dir, config, datasets):
     hicems = []
 
     with (run_dir / "results.yaml").open("r") as f:
         results_yaml = yaml.safe_load(f)
-        hicem_concepts = results_yaml["hicem_concepts"]
+        if config["deep_hicem"]:
+            hicem_concepts = results_yaml["hicem_concepts"]
+        else:
+            n_matched_sub_concepts = results_yaml["n_matched_sub_concepts"]
+            sub_concepts = list(map(lambda n: (n, 0), n_matched_sub_concepts)) # We don't split negative embeddings
+            discovered_concept_semantics = results_yaml["discovered_concept_semantics"]
 
     loaded_arrays = np.load(run_dir / "matched_discovered_concepts.npz")
     matched_discovered_concept_labels = loaded_arrays["matched_discovered_concept_labels"]
 
     for foundation_model in config["foundation_models"]:
-        model = load_hicem(
-            concepts=hicem_concepts,
-            n_tasks=datasets.n_tasks,
-            latent_representation_size=get_latent_representation_size(foundation_model),
-            embedding_size=config["hicem_embedding_size"],
-            concept_loss_weight=config["hicem_concept_loss_weight"],
-            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
-            path=run_dir / f"enhanced_{foundation_model}_hicem.pth",
-            use_task_class_weights=config["use_task_class_weights"],
-            use_concept_loss_weights=config["use_concept_loss_weights"])
-        
+        if config["deep_hicem"]:
+            model = load_deep_hicem(
+                concepts=hicem_concepts,
+                n_tasks=datasets.n_tasks,
+                latent_representation_size=get_latent_representation_size(foundation_model),
+                embedding_size=config["hicem_embedding_size"],
+                concept_loss_weight=config["hicem_concept_loss_weight"],
+                train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
+                path=run_dir / f"enhanced_{foundation_model}_deep_hicem.pth",
+                use_task_class_weights=config["use_task_class_weights"],
+                use_concept_loss_weights=config["use_concept_loss_weights"])
+        else:
+            model = load_hicem(
+                sub_concepts=sub_concepts,
+                concept_names=datasets.concept_names + discovered_concept_semantics,
+                n_tasks=datasets.n_tasks,
+                latent_representation_size=get_latent_representation_size(foundation_model),
+                embedding_size=config["hicem_embedding_size"],
+                concept_loss_weight=config["hicem_concept_loss_weight"],
+                train_dl=datasets.get_dataloader("train", foundation_model=foundation_model, additional_concepts=matched_discovered_concept_labels),
+                path=run_dir / f"enhanced_{foundation_model}_hicem.pth",
+                use_task_class_weights=config["use_task_class_weights"],
+                use_concept_loss_weights=config["use_concept_loss_weights"])
+ 
         hicems.append(model)
 
     return hicems
@@ -641,6 +691,7 @@ if __name__ == "__main__":
     run_dir = args.run_dir
 
     assert len(config["foundation_models"]) == 1 or config["sub_concept_extraction_method"] == "clustering", "Only one foundation model can be used unless clustering is used for sub-concept extraction."
+    assert not (config["sub_concept_extraction_method"] == "hisae" and not config["deep_hicem"]), "HiSAE can only be used when deep HiCEM is enabled."
 
     datasets = load_datasets(config)
 

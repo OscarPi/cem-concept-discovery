@@ -80,7 +80,7 @@ class Datasets:
             model.eval()
             model = model.encode_image
             transform.transforms[2] = transforms._convert_image_to_rgb
-            transform.transforms[3] = transforms._safe_to_tensor
+            transform.transforms[3] = transforms.safe_to_tensor
         else:
             raise ValueError(f"Unrecognised foundation model: {self.foundation_model}.")
 

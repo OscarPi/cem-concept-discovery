@@ -87,7 +87,7 @@ def get_intervention_accuracies(model, test_dl, concepts_to_intervene, one_at_a_
     intervention_accuracies = []
     model.intervention_mask = torch.tensor([0] * model.n_concepts)
     [test_results] = trainer.test(model, test_dl)
-    initial_task_accuracy = test_results["test_y_accuracy"]
+    initial_task_accuracy = round(test_results["test_y_accuracy"], 4)
     intervention_accuracies.append(initial_task_accuracy)
     for c in concepts_to_intervene:
         if one_at_a_time:

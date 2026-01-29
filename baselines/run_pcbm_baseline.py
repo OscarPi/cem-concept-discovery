@@ -26,9 +26,9 @@ def parse_arguments():
     parser.add_argument("--dataset", required=True, type=str)
     return parser.parse_args()
 
-def main(args, concept_bank, backbone, datasets):
-    train_loader = datasets.train_dl(no_concepts=True)
-    test_loader = datasets.test_dl(no_concepts=True)
+def main(args, concept_bank, backbone, datasets, clip_preprocess):
+    train_loader = datasets.get_dataloader("train", use_concepts=False, transform=clip_preprocess)
+    test_loader = datasets.get_dataloader("test", use_concepts=False, transform=clip_preprocess)
     num_classes = datasets.n_tasks
 
     # Initialize the PCBM module.
@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
     model, clip_preprocess = clip.load("ViT-L/14", device=device, download_root=args.model_dir)
     clip_preprocess.transforms[2] = transforms._convert_image_to_rgb
-    clip_preprocess.transforms[3] = transforms._safe_to_tensor
+    clip_preprocess.transforms[3] = transforms.safe_to_tensor
 
     if args.dataset == "awa":
         datasets = awa.AwADatasets(dataset_dir=args.dataset_dir)
@@ -145,9 +145,6 @@ if __name__ == "__main__":
         print("Invalid dataset: valid options are awa, cub, mnist, shapes, kitchens.")
         sys.exit()
 
-    datasets.train_img_transform = clip_preprocess
-    datasets.val_test_img_transform = clip_preprocess
-
     learn_conceptbank_options = EasyDict()
     learn_conceptbank_options.out_dir = args.results_dir
     learn_conceptbank_options.backbone_name = ""
@@ -162,4 +159,4 @@ if __name__ == "__main__":
 
     backbone = model.eval()
     backbone = backbone.to(device)
-    main(options, concept_bank, backbone, datasets)
+    main(options, concept_bank, backbone, datasets, clip_preprocess)

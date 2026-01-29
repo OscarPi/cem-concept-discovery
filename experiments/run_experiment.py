@@ -59,6 +59,10 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     config = load_config(args.config)
+
+    assert len(config["foundation_models"]) == 1 or config["sub_concept_extraction_method"] == "clustering", "Only one foundation model can be used unless clustering is used for sub-concept extraction."
+    assert not (config["sub_concept_extraction_method"] == "hisae" and not config["deep_hicem"]), "HiSAE can only be used when deep HiCEM is enabled."
+ 
     run_name = create_run_name(config["results_dir"], config["dataset"])
     print(f"RUN NAME: {run_name}\n")
     run_dir = Path(config["results_dir"]) / run_name
