@@ -324,6 +324,7 @@ def train_black_box(
 
     model = ConceptEmbeddingModel(
         n_concepts=n_concepts,
+        concept_names=[""] * n_concepts,
         n_tasks=n_tasks,
         latent_representation_size=latent_representation_size,
         embedding_size=embedding_size,
