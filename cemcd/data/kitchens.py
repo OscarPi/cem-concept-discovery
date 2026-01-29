@@ -5,7 +5,8 @@ from PIL import Image
 import OpenEXR
 import struct
 import json
-from cemcd.data.base import Datasets, DataGetterWrapper
+from cemcd.data.transforms import safe_to_tensor
+from cemcd.data.base import Datasets
 
 # FRUIT_VEG = [
 #     "Fruit",
@@ -53,6 +54,51 @@ def image_contains_ingredient(channel1, channel2, manifest, dataset_info, ingred
                 return True
     return False
 
+class KitchensDataset:
+    def __init__(self, dataset_info, directory, concept_names, number_of_examples):
+        self._dataset_info = dataset_info
+        self._directory = directory
+        self._concept_names = concept_names
+        self._length = number_of_examples
+
+    def __getitem__(self, idx):
+        image_path = self._directory / (str(idx + 1).zfill(len(str(self._length))) + ".png")
+        image = Image.open(image_path).convert("RGB")
+
+        with (self._directory / (str(idx + 1).zfill(len(str(self._length))) + ".json")).open() as f:
+            instance_info = json.load(f)
+            class_label = instance_info["recipe_idx"]
+
+        with OpenEXR.File(str(self._directory / (str(idx + 1).zfill(len(str(self._length))) + ".exr"))) as exrfile:
+            manifest = json.loads(exrfile.header()["cryptomatte/f42029d/manifest"])
+            channel1 = exrfile.channels()["CryptoAsset00.r"].pixels
+            channel2 = exrfile.channels()["CryptoAsset00.b"].pixels
+
+        concept_annotations = []
+
+        for concept_name in self._concept_names:
+            concept_annotation = 0
+            if concept_name in self._dataset_info["ingredient_groups"]:
+                for ingredient in self._dataset_info["ingredient_groups"][concept_name]:
+                    if image_contains_ingredient(channel1, channel2, manifest, self._dataset_info, ingredient):
+                        concept_annotation = 1
+                        break
+            else:
+                if image_contains_ingredient(channel1, channel2, manifest, self._dataset_info, concept_name):
+                    concept_annotation = 1
+            concept_annotations.append(concept_annotation)
+
+        return image, class_label, torch.tensor(concept_annotations, dtype=torch.float32)
+
+
+    def __len__(self):
+        return self._length
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+
 class KitchensDatasets(Datasets):
     def __init__(self, dataset_dir="/datasets", model_dir="/checkpoints"):
         dataset_dir = Path(dataset_dir) / "pseudokitchens_V2"
@@ -74,41 +120,10 @@ class KitchensDatasets(Datasets):
         self.dataset_info = dataset_info
         self.dataset_dir = dataset_dir
 
-        def data_getter(directory, number_of_examples):
-            def getter(idx):
-                image_path = directory / (str(idx + 1).zfill(len(str(number_of_examples))) + ".png")
-                image = Image.open(image_path).convert("RGB")
-
-                with (directory / (str(idx + 1).zfill(len(str(number_of_examples))) + ".json")).open() as f:
-                    instance_info = json.load(f)
-                    class_label = instance_info["recipe_idx"]
-
-                with OpenEXR.File(str(directory / (str(idx + 1).zfill(len(str(number_of_examples))) + ".exr"))) as exrfile:
-                    manifest = json.loads(exrfile.header()["cryptomatte/f42029d/manifest"])
-                    channel1 = exrfile.channels()["CryptoAsset00.r"].pixels
-                    channel2 = exrfile.channels()["CryptoAsset00.b"].pixels
-
-                concept_annotations = []
-
-                for concept_name in top_level_concepts:
-                    concept_annotation = 0
-                    if concept_name in dataset_info["ingredient_groups"]:
-                        for ingredient in dataset_info["ingredient_groups"][concept_name]:
-                            if image_contains_ingredient(channel1, channel2, manifest, dataset_info, ingredient):
-                                concept_annotation = 1
-                                break
-                    else:
-                        if image_contains_ingredient(channel1, channel2, manifest, dataset_info, concept_name):
-                            concept_annotation = 1
-                    concept_annotations.append(concept_annotation)
-
-                return image, class_label, torch.tensor(concept_annotations, dtype=torch.float32)
-            return getter
-
         self.data = {
-            "train": DataGetterWrapper(data_getter(dataset_dir / "train", dataset_info["train_size"]), dataset_info["train_size"]),
-            "val": DataGetterWrapper(data_getter(dataset_dir / "val", dataset_info["val_size"]), dataset_info["val_size"]),
-            "test": DataGetterWrapper(data_getter(dataset_dir / "test", dataset_info["test_size"]), dataset_info["test_size"]),
+            "train": KitchensDataset(dataset_info, dataset_dir / "train", top_level_concepts, dataset_info["train_size"]),
+            "val": KitchensDataset(dataset_info, dataset_dir / "val", top_level_concepts, dataset_info["val_size"]),
+            "test": KitchensDataset(dataset_info, dataset_dir / "test", top_level_concepts, dataset_info["test_size"]),
         }
 
         self.concept_names = top_level_concepts
@@ -148,7 +163,7 @@ class KitchensDatasets(Datasets):
 
             self.concept_bank.append(sub_concepts)
 
-        # self.ingredients = sorted(dataset_info["object_counts"]["ingredient_counts"].keys())
+        self.ingredients = sorted(self.dataset_info["object_counts"]["ingredient_counts"].keys())
         # labelfree_test_concepts = []
         # for i in range(len(self.ingredients)):
         #     labelfree_test_concepts.append([])

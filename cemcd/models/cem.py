@@ -1,4 +1,3 @@
-import copy
 import torch
 from cemcd.models import base
 
