@@ -1,4 +1,3 @@
-import copy
 import torch
 from cemcd.models import base
 
@@ -6,6 +5,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
     def __init__(
             self,
             sub_concepts,
+            concept_names,
             n_tasks,
             latent_representation_size,
             embedding_size,
@@ -18,6 +18,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
         self.sub_concepts = sub_concepts
         self.n_sub_concepts = sum(map(sum, self.sub_concepts))
         self.n_concepts = self.n_top_concepts + self.n_sub_concepts
+        self.concept_names = concept_names
 
         self.embedding_size = embedding_size
         self.concept_loss_weight = concept_loss_weight
@@ -143,7 +144,7 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
             intervention_mask = torch.bernoulli(torch.full((self.n_concepts,), 0.25))
         top_concept_interventions, sub_concept_interventions = self.calculate_interventions(c_true, intervention_mask)
 
-        all_mixed_embeddings = torch.zeros((batch_size, 0), device=device)
+        bottleneck = torch.zeros((batch_size, 0), device=device)
         all_predicted_top_concept_probs = torch.zeros((batch_size, 0), device=device)
         all_predicted_sub_concept_probs = torch.zeros((batch_size, 0), device=device)
 
@@ -189,13 +190,17 @@ class HierarchicalConceptEmbeddingModel(base.BaseModel):
                 (top_concept_probs_1_after_sub_concept_interventions + top_concept_probs_2_after_sub_concept_interventions) / 2
             )
 
-            all_mixed_embeddings = torch.cat((all_mixed_embeddings, (
+            bottleneck = torch.cat((bottleneck, (
                 top_positive_embeddings * top_concept_probs_after_interventions[:, torch.newaxis] +
                 top_negative_embeddings * (1 - top_concept_probs_after_interventions[:, torch.newaxis])
             )), dim=1)
 
         predicted_concept_probs = torch.cat((all_predicted_top_concept_probs, all_predicted_sub_concept_probs), axis=-1)
 
-        predicted_labels = self.label_predictor(all_mixed_embeddings)
+        y_logits = self.label_predictor(bottleneck)
 
-        return predicted_concept_probs, predicted_labels, all_mixed_embeddings
+        return {
+            "predicted_concept_probs": predicted_concept_probs,
+            "y_logits": y_logits,
+            "bottleneck": bottleneck,
+        }

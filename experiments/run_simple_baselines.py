@@ -4,13 +4,14 @@ import yaml
 import wandb
 import torch
 from cemcd.training import train_cbm, train_black_box
+from cemcd.data import get_latent_representation_size
 from experiment_utils import load_config, load_datasets, get_intervention_accuracies
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-c", "--config", 
-        type=str,
+        type=Path,
         required=True,
         help="Path to the experiment config file.")
     return parser.parse_args()
@@ -27,11 +28,11 @@ def run_baselines(config):
             continue
 
         all_ok = True
-        for dataset in datasets:
-            if (results_dir / f"{dataset.foundation_model}_cbm_baseline_{run_number}.pth").exists():
+        for foundation_model in config["foundation_models"]:
+            if (results_dir / f"{foundation_model}_cbm_baseline_{run_number}.pth").exists():
                 all_ok = False
                 break
-            if (results_dir / f"{dataset.foundation_model}_black_box_baseline_{run_number}.pth").exists():
+            if (results_dir / f"{foundation_model}_black_box_baseline_{run_number}.pth").exists():
                 all_ok = False
                 break
 
@@ -41,51 +42,52 @@ def run_baselines(config):
         print("Could not create results files: too many already.")
         return
 
-    for dataset in datasets:
+    for foundation_model in config["foundation_models"]:
         cbm, cbm_test_results = train_cbm(
-            n_concepts=dataset.n_concepts,
-            n_tasks=dataset.n_tasks,
-            latent_representation_size=dataset.latent_representation_size,
+            n_concepts=datasets.n_concepts,
+            concept_names=datasets.concept_names,
+            n_tasks=datasets.n_tasks,
+            latent_representation_size=get_latent_representation_size(foundation_model),
             concept_loss_weight=config["cbm_concept_loss_weight"],
-            train_dl=dataset.train_dl(),
-            val_dl=dataset.val_dl(),
-            test_dl=dataset.test_dl(),
-            save_path=results_dir / f"{dataset.foundation_model}_cbm_baseline_{run_number}.pth",
+            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model),
+            val_dl=datasets.get_dataloader("val", foundation_model=foundation_model),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
+            save_path=results_dir / f"{foundation_model}_cbm_baseline_{run_number}.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"],
             use_concept_loss_weights=config["use_concept_loss_weights"])
         cbm_task_accuracy = round(cbm_test_results["test_y_accuracy"], 4)
         cbm_concept_auc = round(cbm_test_results["test_c_auc"], 4)
-        results[f"{dataset.foundation_model}_cbm_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+        # results[f"{foundation_model}_cbm_concept_interventions_one_at_a_time"] = get_intervention_accuracies(
+        #     model=cbm,
+        #     test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
+        #     concepts_to_intervene=range(datasets.n_concepts),
+        #     one_at_a_time=True
+        # )
+        results[f"{foundation_model}_cbm_concept_interventions_cumulative"] = get_intervention_accuracies(
             model=cbm,
-            test_dl=dataset.test_dl(),
-            concepts_to_intervene=range(dataset.n_concepts),
-            one_at_a_time=True
-        )
-        results[f"{dataset.foundation_model}_cbm_concept_interventions_cumulative"] = get_intervention_accuracies(
-            model=cbm,
-            test_dl=dataset.test_dl(),
-            concepts_to_intervene=range(dataset.n_concepts),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
+            concepts_to_intervene=range(datasets.n_concepts),
             one_at_a_time=False
         )
         results.update({
-            f"{dataset.foundation_model}_cbm_task_accuracy": float(cbm_task_accuracy),
-            f"{dataset.foundation_model}_cbm_concept_auc": float(cbm_concept_auc)
+            f"{foundation_model}_cbm_task_accuracy": float(cbm_task_accuracy),
+            f"{foundation_model}_cbm_concept_auc": float(cbm_concept_auc)
         })
 
         _, black_box_test_results = train_black_box(
-            n_concepts=dataset.n_concepts, # Determines the shape of the architecture, black box so no concept supervision is used.
-            n_tasks=dataset.n_tasks,
-            latent_representation_size=dataset.latent_representation_size,
+            n_concepts=datasets.n_concepts, # Determines the shape of the architecture, black box so no concept supervision is used.
+            n_tasks=datasets.n_tasks,
+            latent_representation_size=get_latent_representation_size(foundation_model),
             embedding_size=config["cem_embedding_size"],
-            train_dl=dataset.train_dl(),
-            val_dl=dataset.val_dl(),
-            test_dl=dataset.test_dl(),
-            save_path=results_dir / f"{dataset.foundation_model}_black_box_baseline_{run_number}.pth",
+            train_dl=datasets.get_dataloader("train", foundation_model=foundation_model),
+            val_dl=datasets.get_dataloader("val", foundation_model=foundation_model),
+            test_dl=datasets.get_dataloader("test", foundation_model=foundation_model),
+            save_path=results_dir / f"{foundation_model}_black_box_baseline_{run_number}.pth",
             max_epochs=config["max_epochs"],
             use_task_class_weights=config["use_task_class_weights"])
         black_box_task_accuracy = round(black_box_test_results["test_y_accuracy"], 4)
-        results.update({f"{dataset.foundation_model}_black_box_task_accuracy": float(black_box_task_accuracy)})
+        results.update({f"{foundation_model}_black_box_task_accuracy": float(black_box_task_accuracy)})
 
     with (results_dir / f"baseline_results_{run_number}.yaml").open("w") as f:
         yaml.safe_dump(results, f)

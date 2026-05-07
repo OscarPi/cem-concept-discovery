@@ -9,9 +9,8 @@
 /.zshrc
 /cemcd.egg-info
 /datasets
-/lightning_logs
+**/lightning_logs
 /results
-/archive
 /.condarc
 /.config
 /.gitconfig
@@ -26,9 +25,3 @@
 /.idea
 **/__pycache__
 /wandb
-/cache
-/user_study
-/BatchTopK
-/imagenet_naming
-/imagenet_hypernyms.ipynb
-/experiments/new_user_study

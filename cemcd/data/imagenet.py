@@ -1,11 +1,9 @@
 from pathlib import Path
 from nltk.corpus import wordnet as wn
 import pickle
-import numpy as np
 import torch
-from PIL import Image
-from cemcd.data import transforms
-from cemcd.data.base import Datasets
+from torch.utils.data import DataLoader
+from cemcd.data.base import Datasets, DataGetterWrapper, CEMDataset
 
 CONCEPT_SYNSETS = [
     "n13086908", # Plant part
@@ -127,7 +125,6 @@ def calculate_concepts(synset_ids):
 class ImageNetDatasets(Datasets):
     def __init__(
             self,
-            foundation_model="clip_vitl14",
             dataset_dir="/datasets"):
         dataset_dir = Path(dataset_dir)
         splits_file = dataset_dir / "imagenet" / "splits.pkl"
@@ -148,8 +145,12 @@ class ImageNetDatasets(Datasets):
         #     val_x = load_precomputed_features_for_split("val", len(splits["val"]), foundation_model, dataset_dir / "imagenet")
         #     test_x = load_precomputed_features_for_split("test", len(splits["test"]), foundation_model, dataset_dir / "imagenet")
         # else:
-        if foundation_model is None:
-            raise ValueError("foundation_model must be specified for ImageNet.")
+        foundation_model = "clip_vitl14"
+
+        super().__init__(
+            n_concepts=len(CONCEPT_SYNSETS),
+            n_tasks=len(train_synset_ids),
+        )
 
         def data_getter(data, split_name):
             currently_loaded_chunk = None
@@ -168,19 +169,32 @@ class ImageNetDatasets(Datasets):
                     currently_loaded_chunk_idx = chunk_idx
 
                 return currently_loaded_chunk[within_chunk_idx], synset_id_to_idx[synset_id], synset_id_to_concepts[synset_id]
-            getter.length = len(data)
             return getter
+        
+        self.data = {
+            "train": DataGetterWrapper(data_getter(splits["train"], "train"), len(splits["train"])),
+            "val": DataGetterWrapper(data_getter(splits["val"], "val"), len(splits["val"])),
+            "test": DataGetterWrapper(data_getter(splits["test"], "test"), len(splits["test"])),
+        }
 
-        super().__init__(
-            train_getter=data_getter(splits["train"], "train"),
-            val_getter=data_getter(splits["val"], "val"),
-            test_getter=data_getter(splits["test"], "test"),
-        )
+        self.concept_names = []
+        for synset_id in CONCEPT_SYNSETS:
+            synset = imagenet_id_to_synset(synset_id)
+            concept_name = synset.name().split(".")[0].replace('_',' ')
+            self.concept_names.append(concept_name)
 
-        self.foundation_model = foundation_model
-        self.n_concepts = len(CONCEPT_SYNSETS)
-        self.n_tasks = len(train_synset_ids)
-        if foundation_model == "dinov2_vitg14":
-            self.latent_representation_size = 1536
-        elif foundation_model == "clip_vitl14":
-            self.latent_representation_size = 768
+
+    def get_dataloader(self, split, foundation_model=None, transform=None, use_concepts=True, additional_concepts=None, include_provided_concepts=True):
+        assert foundation_model == "clip_vitl14", "Only 'clip_vitl14' is supported for ImageNet."
+
+        dataset = CEMDataset(
+            data=self.data[split],
+            transform=transform,
+            use_concepts=use_concepts,
+            additional_concepts=additional_concepts,
+            include_provided_concepts=include_provided_concepts)
+
+        return DataLoader(
+            dataset,
+            batch_size=256,
+            num_workers=7)

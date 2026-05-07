@@ -22,6 +22,23 @@ class BaseModel(lightning.LightningModule):
     def forward(self, x, c_true=None, train=False):
         raise NotImplementedError()
 
+    def compute_concept_loss(self, predicted_concept_probs, c):
+        if self.concept_loss_weight == 0:
+            return 0.0
+
+        c_used = torch.where(
+            torch.logical_and(c >= 0, c <= 1),
+            c,
+            torch.zeros_like(c)
+        )
+        predicted_concept_probs_used = torch.where(
+            torch.logical_and(c >= 0, c <= 1),
+            predicted_concept_probs,
+            torch.zeros_like(predicted_concept_probs)
+        )
+
+        return self.loss_concept(predicted_concept_probs_used, c_used)
+
     def run_step(self, batch, train=False):
         x, y, c = batch
 
@@ -31,31 +48,19 @@ class BaseModel(lightning.LightningModule):
             train=train
         )
 
-        predicted_concept_probs = result[0]
-        predicted_labels = result[1]
+        predicted_concept_probs = result["predicted_concept_probs"]
+        y_logits = result["y_logits"]
 
-        task_loss = self.loss_task(predicted_labels.squeeze(), y)
+        task_loss = self.loss_task(y_logits.squeeze(), y)
 
-        concept_loss = 0
+        concept_loss = self.compute_concept_loss(predicted_concept_probs, c)
         c_accuracy, c_accuracies, c_auc, c_aucs = np.nan, [np.nan], np.nan, [np.nan]
         if self.concept_loss_weight > 0:
-            c_used = torch.where(
-                torch.logical_and(c >= 0, c <= 1),
-                c,
-                torch.zeros_like(c)
-            )
-            predicted_concept_probs_used = torch.where(
-                torch.logical_and(c >= 0, c <= 1),
-                predicted_concept_probs,
-                torch.zeros_like(predicted_concept_probs)
-            )
-
-            concept_loss = self.loss_concept(predicted_concept_probs_used, c_used)
             c_accuracy, c_accuracies, c_auc, c_aucs = calculate_concept_accuracies(predicted_concept_probs, c)
 
         loss = self.concept_loss_weight * concept_loss + task_loss
 
-        y_accuracy = calculate_task_accuracy(predicted_labels, y)
+        y_accuracy = calculate_task_accuracy(y_logits, y)
 
         result = {
             "c_accuracy": c_accuracy,
@@ -69,43 +74,43 @@ class BaseModel(lightning.LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, result = self.run_step(batch, train=True)
-        self.log("loss", float(loss), prog_bar=True)
+        self.log("loss", loss.item(), prog_bar=True)
         self.log("c_accuracy", result["c_accuracy"], prog_bar=True)
         self.log("c_auc", result["c_auc"], prog_bar=True)
         self.log("y_accuracy", result["y_accuracy"], prog_bar=True)
         for i, accuracy in enumerate(result["c_accuracies"]):
-            self.log(f"concept_{i+1}_accuracy", accuracy)
+            self.log(f"con_{i+1}_{self.concept_names[i]}_accuracy", accuracy)
         for i, auc in enumerate(result["c_aucs"]):
-            self.log(f"concept_{i+1}_auc", auc)
+            self.log(f"con_{i+1}_{self.concept_names[i]}_auc", auc)
         return {
             "loss": loss,
-            "log": {**result, "loss": float(loss)}
+            "log": {**result, "loss": loss.item()}
         }
 
     def validation_step(self, batch, batch_idx):
         loss, result = self.run_step(batch)
-        self.log("val_loss", float(loss), prog_bar=True)
+        self.log("val_loss", loss.item(), prog_bar=True)
         self.log("val_c_accuracy", result["c_accuracy"], prog_bar=True)
         self.log("val_c_auc", result["c_auc"], prog_bar=True)
         self.log("val_y_accuracy", result["y_accuracy"], prog_bar=True)
         for i, accuracy in enumerate(result["c_accuracies"]):
-            self.log(f"concept_{i+1}_val_accuracy", accuracy)
+            self.log(f"con_{i+1}_{self.concept_names[i]}_val_accuracy", accuracy)
         for i, auc in enumerate(result["c_aucs"]):
-            self.log(f"concept_{i+1}_val_auc", auc)
+            self.log(f"con_{i+1}_{self.concept_names[i]}_val_auc", auc)
         return {
-            "val_" + key: val for key, val in list(result.items()) + [("loss", float(loss))]
+            "val_" + key: val for key, val in list(result.items()) + [("loss", loss.item())]
         }
 
     def test_step(self, batch, batch_idx):
         loss, result = self.run_step(batch)
-        self.log("test_loss", float(loss), prog_bar=True)
+        self.log("test_loss", loss.item(), prog_bar=True)
         self.log("test_c_accuracy", result["c_accuracy"], prog_bar=True)
         self.log("test_c_auc", result["c_auc"], prog_bar=True)
         self.log("test_y_accuracy", result["y_accuracy"], prog_bar=True)
         for i, accuracy in enumerate(result["c_accuracies"]):
-            self.log(f"concept_{i+1}_test_accuracy", accuracy)
+            self.log(f"con_{i+1}_{self.concept_names[i]}_test_accuracy", accuracy)
         for i, auc in enumerate(result["c_aucs"]):
-            self.log(f"concept_{i+1}_test_auc", auc)
+            self.log(f"con_{i+1}_{self.concept_names[i]}_test_auc", auc)
         return loss
 
     def predict_step(self, batch, batch_idx):

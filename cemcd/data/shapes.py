@@ -3,7 +3,7 @@ import pickle
 from PIL import Image, ImageDraw
 import numpy as np
 import torch
-from cemcd.data.base import Datasets
+from cemcd.data.base import Datasets, DataGetterWrapper
 
 SHAPES = ["square", "circle", "triangle", "hexagon"]
 COLOURS = ["red", "green", "blue", "purple"]
@@ -78,7 +78,7 @@ def calculate_concepts(example):
     return torch.tensor(concept_labels, dtype=torch.float32)
 
 def make_concept_bank(examples):
-    concept_bank = np.zeros((len(examples), 12))
+    concept_bank = np.zeros((len(examples), 12), dtype=bool)
 
     for idx, example in enumerate(examples):
         if example["shape"] == "square":
@@ -111,10 +111,15 @@ def make_concept_bank(examples):
 class ShapesDatasets(Datasets):
     def __init__(
             self,
-            foundation_model=None,
             dataset_dir="/datasets",
-            model_dir="/checkpoints",
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
+            model_dir="/checkpoints"):
+        super().__init__(
+            n_concepts=5,
+            n_tasks=48,
+            representation_cache_dir=Path(dataset_dir) / "shapes",
+            model_dir=model_dir
+        )
+
         with (Path(dataset_dir) / "shapes" / "shapes_dataset.pkl").open("rb") as f:
             dataset = pickle.load(f)
 
@@ -123,33 +128,41 @@ class ShapesDatasets(Datasets):
                 ex = examples[idx]
                 return render_image(ex), calculate_label(ex), calculate_concepts(ex)
 
-            getter.length = len(examples)
             return getter
 
-        super().__init__(
-            train_getter=data_getter(dataset["train"]),
-            val_getter=data_getter(dataset["val"]),
-            test_getter=data_getter(dataset["test"]),
-            foundation_model=foundation_model,
-            train_img_transform=None,
-            val_test_img_transform=None,
-            representation_cache_dir=Path(dataset_dir) / "shapes",
-            model_dir=model_dir,
-            device=device)
-        
-        self.concept_bank = make_concept_bank(dataset["train"])
+        self.data = {
+            "train": DataGetterWrapper(data_getter(dataset["train"]), len(dataset["train"])),
+            "val": DataGetterWrapper(data_getter(dataset["val"]), len(dataset["val"])),
+            "test": DataGetterWrapper(data_getter(dataset["test"]), len(dataset["test"])),
+        }
 
-        self.concept_test_ground_truth = make_concept_bank(dataset["test"])
+        sub_concept_train_ground_truth = make_concept_bank(dataset["train"])
+        sub_concept_test_ground_truth = make_concept_bank(dataset["test"])
 
-        self.sub_concept_map = [
+        SUB_CONCEPT_MAP = [
             [0, 2, 3],
             [4, 5],
             [6, 7],
             [8, 9],
             [10, 11]
         ]
-    
-        self.concept_names = CONCEPT_NAMES
 
-        self.n_concepts = 5
-        self.n_tasks = 48
+        self.concept_bank = []
+        for sub_concept_indices in SUB_CONCEPT_MAP:
+            sub_concepts = []
+            for idx in sub_concept_indices:
+                sub_concepts.append({
+                    "name": CONCEPT_NAMES[idx],
+                    "train_labels": sub_concept_train_ground_truth[:, idx],
+                    "test_labels": sub_concept_test_ground_truth[:, idx],
+                    "sub_sub_concepts": []
+                })
+            self.concept_bank.append(sub_concepts)
+
+        self.concept_names = [
+            "Shape is square/triangle/hexagon",
+            "Shape color is red/green",
+            "Shape color is blue/purple",
+            "Background color is red/green",
+            "Background color is blue/purple",
+        ]

@@ -25,22 +25,22 @@ class LinearModel(lightning.LightningModule):
 
     def training_step(self, batch, _):
         loss = self.run_step(batch)
-        self.log("loss", float(loss), prog_bar=True)
+        self.log("loss", loss.item(), prog_bar=True)
         return {
             "loss": loss,
-            "log": {"loss": float(loss)}
+            "log": {"loss": loss.item()}
         }
 
     def validation_step(self, batch, _):
         loss = self.run_step(batch)
-        self.log("val_loss", float(loss), prog_bar=True)
+        self.log("val_loss", loss.item(), prog_bar=True)
         return {
-            "val_loss": float(loss)
+            "val_loss": loss.item()
         }
 
     def test_step(self, batch, _):
         loss = self.run_step(batch)
-        self.log("test_loss", float(loss), prog_bar=True)
+        self.log("test_loss", loss.item(), prog_bar=True)
         return loss
 
     def predict_step(self, batch, _):

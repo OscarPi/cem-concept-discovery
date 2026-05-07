@@ -5,6 +5,7 @@ class ConceptBottleneckModel(base.BaseModel):
     def __init__(
             self,
             n_concepts,
+            concept_names,
             n_tasks,
             latent_representation_size,
             concept_loss_weight,
@@ -12,6 +13,7 @@ class ConceptBottleneckModel(base.BaseModel):
             concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
+        self.concept_names = concept_names
         self.concept_loss_weight = concept_loss_weight
 
         # Representations from the foundation model are precomputed and passed in the dataset.
@@ -60,6 +62,9 @@ class ConceptBottleneckModel(base.BaseModel):
         else:
             concept_probs_after_interventions = predicted_concept_probs
 
-        predicted_labels = self.label_predictor(concept_probs_after_interventions)
+        y_logits = self.label_predictor(concept_probs_after_interventions)
 
-        return predicted_concept_probs, predicted_labels
+        return {
+            "predicted_concept_probs": predicted_concept_probs,
+            "y_logits": y_logits
+        }

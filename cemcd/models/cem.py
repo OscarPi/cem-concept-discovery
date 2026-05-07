@@ -1,4 +1,3 @@
-import copy
 import torch
 from cemcd.models import base
 
@@ -6,6 +5,7 @@ class ConceptEmbeddingModel(base.BaseModel):
     def __init__(
             self,
             n_concepts,
+            concept_names,
             n_tasks,
             latent_representation_size,
             embedding_size,
@@ -14,6 +14,7 @@ class ConceptEmbeddingModel(base.BaseModel):
             concept_loss_weights):
         super().__init__(n_tasks, task_class_weights, concept_loss_weights)
         self.n_concepts = n_concepts
+        self.concept_names = concept_names
 
         self.embedding_size = embedding_size
         self.concept_loss_weight = concept_loss_weight
@@ -82,11 +83,15 @@ class ConceptEmbeddingModel(base.BaseModel):
         else:
             concept_probs_after_interventions = predicted_concept_probs
 
-        mixed_concept_embeddings = (
+        bottleneck = (
             concept_embeddings[:, :, :self.embedding_size] * torch.unsqueeze(concept_probs_after_interventions, dim=-1) +
             concept_embeddings[:, :, self.embedding_size:] * (1 - torch.unsqueeze(concept_probs_after_interventions, dim=-1))
         )
-        mixed_concept_embeddings = mixed_concept_embeddings.view((-1, self.embedding_size * self.n_concepts))
-        predicted_labels = self.label_predictor(mixed_concept_embeddings)
+        bottleneck = bottleneck.view((-1, self.embedding_size * self.n_concepts))
+        y_logits = self.label_predictor(bottleneck)
 
-        return predicted_concept_probs, predicted_labels, mixed_concept_embeddings
+        return {
+            "predicted_concept_probs": predicted_concept_probs,
+            "y_logits": y_logits,
+            "bottleneck": bottleneck
+        }
