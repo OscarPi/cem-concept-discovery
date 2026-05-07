@@ -11,7 +11,6 @@
 /datasets
 **/lightning_logs
 /results
-/archive
 /.condarc
 /.config
 /.gitconfig
@@ -26,10 +25,3 @@
 /.idea
 **/__pycache__
 /wandb
-/cache
-/user_study
-/BatchTopK
-/imagenet_naming
-/imagenet_hypernyms.ipynb
-/experiments/hsae
-/experiments/new_user_study
